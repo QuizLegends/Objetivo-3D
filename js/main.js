@@ -99,8 +99,12 @@ function adjustBrightness(delta) {
 }
 
 function createExtraButtons() {
-  const toolbarRight = document.querySelector('.toolbar-right');
-  if (!toolbarRight) return;
+  let toolbarRight = document.querySelector('.toolbar-right');
+
+  if (!toolbarRight) {
+    toolbarRight = document.querySelector('.toolbar') || document.body;
+    console.warn('Elemento .toolbar-right não encontrado. Usando fallback.');
+  }
 
   // Evita duplicar
   if (document.getElementById('btn-brightness-up')) return;
@@ -135,9 +139,15 @@ function createExtraButtons() {
   btnUp.title = 'Aumentar brilho';
   btnUp.addEventListener('click', () => adjustBrightness(0.25));
 
-  toolbarRight.insertBefore(btnUp, toolbarRight.firstChild);
-  toolbarRight.insertBefore(btnDown, toolbarRight.firstChild);
-  toolbarRight.insertBefore(btnChar, toolbarRight.firstChild);
+  if (toolbarRight.firstChild) {
+    toolbarRight.insertBefore(btnUp, toolbarRight.firstChild);
+    toolbarRight.insertBefore(btnDown, toolbarRight.firstChild);
+    toolbarRight.insertBefore(btnChar, toolbarRight.firstChild);
+  } else {
+    toolbarRight.appendChild(btnChar);
+    toolbarRight.appendChild(btnDown);
+    toolbarRight.appendChild(btnUp);
+  }
 }
 
 // ===================== LOADERS =====================
@@ -177,18 +187,16 @@ function loadModel(file) {
   });
 }
 
-// ===================== DETECTAR OSSOS (MELHORADO) =====================
+// ===================== DETECTAR OSSOS =====================
 function detectBones(root) {
   const bonesMap = new Map();
 
   root.traverse((c) => {
-    // SkinnedMesh com skeleton
     if (c.isSkinnedMesh && c.skeleton && c.skeleton.bones) {
       c.skeleton.bones.forEach((bone) => {
         if (bone && bone.name) bonesMap.set(bone.uuid, bone);
       });
     }
-    // Bones diretos
     if (c.isBone && c.name) {
       bonesMap.set(c.uuid, c);
     }
@@ -221,11 +229,9 @@ async function importCharacter(file) {
     scene.add(root);
     state.character = root;
 
-    // Detectar ossos
     state.bones = detectBones(root);
 
     if (state.bones.length > 0) {
-      // Pegar skeleton de qualquer skinned mesh
       root.traverse((c) => {
         if (c.isSkinnedMesh && c.skeleton) {
           state.skeleton = c.skeleton;
@@ -243,7 +249,6 @@ async function importCharacter(file) {
       alert('Nenhum osso foi detectado neste personagem.\nTente um modelo com esqueleto (ex: Mixamo).');
     }
 
-    // Animações
     if (root.animations && root.animations.length > 0) {
       state.mixer = new THREE.AnimationMixer(root);
       state.actions = {};
@@ -297,7 +302,7 @@ async function importObject(file) {
   }
 }
 
-// ===================== ATTACH / DETACH =====================
+// ===================== ATTACH / DETACH (CORRIGIDO) =====================
 function attachToBone() {
   if (!state.selectedObject) {
     alert('Selecione um objeto primeiro.');
@@ -311,10 +316,17 @@ function attachToBone() {
   const obj = state.selectedObject;
   const bone = state.selectedBone;
 
+  // Desanexa o TransformControls ANTES de mudar a hierarquia
+  transformControls.detach();
+
+  // Anexa o objeto ao osso (mantém a transformação mundial)
   bone.attach(obj);
 
   const entry = state.objects.find(o => o.root === obj);
   if (entry) entry.bone = bone;
+
+  // Reanexa o TransformControls
+  transformControls.attach(obj);
 
   buildHierarchy();
   updatePropertiesPanel();
@@ -328,10 +340,18 @@ function detachObject() {
   }
 
   const obj = state.selectedObject;
+
+  // Desanexa o controle primeiro
+  transformControls.detach();
+
+  // Volta para a cena (mantém transformação mundial)
   scene.attach(obj);
 
   const entry = state.objects.find(o => o.root === obj);
   if (entry) entry.bone = null;
+
+  // Reanexa o controle
+  transformControls.attach(obj);
 
   buildHierarchy();
   updatePropertiesPanel();
@@ -408,7 +428,6 @@ function buildBonesList() {
     return;
   }
 
-  // Ordenar por nome para facilitar
   const sorted = [...state.bones].sort((a, b) => a.name.localeCompare(b.name));
 
   sorted.forEach(bone => {
@@ -425,7 +444,6 @@ function buildBonesList() {
       e.stopPropagation();
       selectBone(bone);
 
-      // Feedback visual imediato
       document.querySelectorAll('#bones-list li').forEach(el => el.classList.remove('selected'));
       li.classList.add('selected');
     });
