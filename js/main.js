@@ -37,7 +37,6 @@ renderer.toneMappingExposure = 1.4;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1e28);
-// scene.fog = new THREE.Fog(0x0a0c10, 20, 60);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
 camera.position.set(0, 1.5, 4);
@@ -240,6 +239,7 @@ function attachToBone() {
   const obj = state.selectedObject;
   const bone = state.selectedBone;
 
+  // Anexa preservando a posição atual
   bone.attach(obj);
 
   const entry = state.objects.find(o => o.root === obj);
@@ -267,10 +267,10 @@ function detachObject() {
   setStatus(`"${obj.name}" desanexado`);
 }
 
-// ===================== SELECTION =====================
+// ===================== SELECTION (CORRIGIDO) =====================
 function selectObject(obj) {
   state.selectedObject = obj;
-  state.selectedBone = null;
+  // NÃO limpa mais o osso selecionado
 
   if (obj) {
     transformControls.attach(obj);
@@ -284,6 +284,8 @@ function selectObject(obj) {
 
 function selectBone(bone) {
   state.selectedBone = bone;
+  // Mantém o objeto selecionado
+
   highlightBonesList();
   highlightHierarchy();
   updatePropertiesPanel();
@@ -380,7 +382,7 @@ function updatePropertiesPanel() {
   if (bone && !obj) {
     container.innerHTML = `
       <div class="prop-row"><label>Nome</label><input type="text" value="${bone.name}" readonly /></div>
-      <p class="muted" style="margin-top:8px">Osso selecionado. Selecione um objeto e clique em "Anexar ao Osso".</p>
+      <p class="muted" style="margin-top:8px">Osso selecionado. Agora selecione um objeto e clique em "Anexar ao Osso".</p>
     `;
     return;
   }
@@ -435,7 +437,6 @@ function updatePropertiesPanel() {
     updatePropertiesPanel();
   });
 
-  // Aplica automaticamente quando mudar o tamanho
   document.getElementById('prop-size')?.addEventListener('change', applyProperties);
   document.getElementById('prop-size')?.addEventListener('input', applyProperties);
 }
