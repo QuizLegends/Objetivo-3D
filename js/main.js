@@ -22,6 +22,7 @@ const state = {
   showSkeleton: false,
   showAxes: true,
   space: 'local',
+  exposure: 1.4,
 };
 
 // ===================== SCENE SETUP =====================
@@ -33,7 +34,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.4;
+renderer.toneMappingExposure = state.exposure;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1e28);
@@ -60,7 +61,7 @@ transformControls.addEventListener('objectChange', () => {
   updatePropertiesPanel();
 });
 
-// Lights (mais claras)
+// Lights
 const ambient = new THREE.AmbientLight(0xffffff, 1.1);
 scene.add(ambient);
 
@@ -89,6 +90,55 @@ axes.position.y = 0.01;
 scene.add(axes);
 
 let skeletonHelper = null;
+
+// ===================== EXTRA BUTTONS (Brilho + Personagem) =====================
+function createExtraButtons() {
+  // Botão Selecionar Personagem na toolbar
+  const toolbarRight = document.querySelector('.toolbar-right');
+  if (toolbarRight && !document.getElementById('btn-select-character')) {
+    const btnChar = document.createElement('button');
+    btnChar.id = 'btn-select-character';
+    btnChar.className = 'btn';
+    btnChar.textContent = 'Personagem';
+    btnChar.title = 'Selecionar o personagem';
+    btnChar.addEventListener('click', () => {
+      if (state.character) {
+        selectObject(state.character);
+        setStatus('Personagem selecionado');
+      } else {
+        alert('Nenhum personagem carregado.');
+      }
+    });
+    toolbarRight.insertBefore(btnChar, toolbarRight.firstChild);
+  }
+
+  // Botões de Brilho no viewport
+  const viewportControls = document.getElementById('viewport-controls');
+  if (viewportControls && !document.getElementById('btn-brightness-up')) {
+    const btnDown = document.createElement('button');
+    btnDown.id = 'btn-brightness-down';
+    btnDown.className = 'btn-icon';
+    btnDown.title = 'Diminuir brilho';
+    btnDown.textContent = '🌑';
+    btnDown.addEventListener('click', () => adjustBrightness(-0.2));
+
+    const btnUp = document.createElement('button');
+    btnUp.id = 'btn-brightness-up';
+    btnUp.className = 'btn-icon';
+    btnUp.title = 'Aumentar brilho';
+    btnUp.textContent = '☀️';
+    btnUp.addEventListener('click', () => adjustBrightness(0.2));
+
+    viewportControls.appendChild(btnDown);
+    viewportControls.appendChild(btnUp);
+  }
+}
+
+function adjustBrightness(delta) {
+  state.exposure = Math.max(0.3, Math.min(3.5, state.exposure + delta));
+  renderer.toneMappingExposure = state.exposure;
+  setStatus(`Brilho: ${state.exposure.toFixed(1)}`);
+}
 
 // ===================== LOADERS =====================
 const gltfLoader = new GLTFLoader();
@@ -232,14 +282,13 @@ function attachToBone() {
     return;
   }
   if (!state.selectedBone) {
-    alert('Selecione um osso primeiro.');
+    alert('Selecione um osso primeiro.\nVá na aba Ossos e clique no osso desejado.');
     return;
   }
 
   const obj = state.selectedObject;
   const bone = state.selectedBone;
 
-  // Anexa preservando a posição atual
   bone.attach(obj);
 
   const entry = state.objects.find(o => o.root === obj);
@@ -267,10 +316,10 @@ function detachObject() {
   setStatus(`"${obj.name}" desanexado`);
 }
 
-// ===================== SELECTION (CORRIGIDO) =====================
+// ===================== SELECTION =====================
 function selectObject(obj) {
   state.selectedObject = obj;
-  // NÃO limpa mais o osso selecionado
+  // Não limpa o osso selecionado
 
   if (obj) {
     transformControls.attach(obj);
@@ -284,12 +333,10 @@ function selectObject(obj) {
 
 function selectBone(bone) {
   state.selectedBone = bone;
-  // Mantém o objeto selecionado
-
   highlightBonesList();
   highlightHierarchy();
   updatePropertiesPanel();
-  setStatus(`Osso: ${bone.name}`);
+  setStatus(`Osso selecionado: ${bone.name}`);
 }
 
 // ===================== UI BUILDERS =====================
@@ -298,7 +345,7 @@ function buildHierarchy() {
   list.innerHTML = '';
 
   if (state.character) {
-    const charLi = createTreeItem(state.character.name || 'Character', state.character, true);
+    const charLi = createTreeItem(state.character.name || 'Character', state.character);
     list.appendChild(charLi);
 
     if (state.bones.length) {
@@ -306,6 +353,7 @@ function buildHierarchy() {
       armatureLi.innerHTML = `<span class="toggle">▼</span> Armature`;
       const children = document.createElement('ul');
       children.className = 'children';
+
       state.bones.forEach(bone => {
         const bi = document.createElement('li');
         bi.textContent = bone.name;
@@ -316,13 +364,14 @@ function buildHierarchy() {
         });
         children.appendChild(bi);
       });
+
       armatureLi.appendChild(children);
       list.appendChild(armatureLi);
     }
   }
 
   state.objects.forEach(entry => {
-    const li = createTreeItem(entry.name, entry.root, false);
+    const li = createTreeItem(entry.name, entry.root);
     if (entry.bone) {
       li.innerHTML += ` <span class="muted">→ ${entry.bone.name}</span>`;
     }
@@ -330,21 +379,26 @@ function buildHierarchy() {
   });
 }
 
-function createTreeItem(name, obj, isCharacter) {
+function createTreeItem(name, obj) {
   const li = document.createElement('li');
   li.textContent = name;
   li.dataset.uuid = obj.uuid;
-  li.addEventListener('click', () => selectObject(obj));
+  li.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selectObject(obj);
+  });
   return li;
 }
 
 function buildBonesList() {
   const list = document.getElementById('bones-list');
   list.innerHTML = '';
+
   if (!state.bones.length) {
     list.innerHTML = '<li class="muted">Nenhum osso</li>';
     return;
   }
+
   state.bones.forEach(bone => {
     const li = document.createElement('li');
     li.textContent = bone.name;
@@ -387,9 +441,7 @@ function updatePropertiesPanel() {
     return;
   }
 
-  // Calcula o tamanho atual (média da escala * 100)
   const currentSize = Math.round(((obj.scale.x + obj.scale.y + obj.scale.z) / 3) * 100);
-
   const pos = obj.position;
   const rot = obj.rotation;
   const parentName = obj.parent && obj.parent.isBone ? obj.parent.name : (obj.parent === scene ? 'Scene' : (obj.parent?.name || '—'));
@@ -403,7 +455,7 @@ function updatePropertiesPanel() {
       <input type="number" id="prop-size" value="${currentSize}" step="5" min="1" max="500" style="flex:1; font-size:16px; padding:8px;" />
     </div>
     <p class="muted" style="margin:4px 0 10px 0; font-size:11px;">
-      100 = tamanho original &nbsp;|&nbsp; 50 = metade &nbsp;|&nbsp; 30 = pequeno
+      100 = original &nbsp;|&nbsp; 50 = metade &nbsp;|&nbsp; 30 = pequeno
     </p>
 
     <div class="prop-row">
@@ -445,7 +497,6 @@ function applyProperties() {
   const obj = state.selectedObject;
   if (!obj) return;
 
-  // Tamanho (100 = original)
   const sizeInput = document.getElementById('prop-size');
   if (sizeInput) {
     let size = parseFloat(sizeInput.value) || 100;
@@ -455,19 +506,16 @@ function applyProperties() {
     obj.scale.set(scale, scale, scale);
   }
 
-  // Posição
   const px = parseFloat(document.getElementById('prop-px')?.value) || 0;
   const py = parseFloat(document.getElementById('prop-py')?.value) || 0;
   const pz = parseFloat(document.getElementById('prop-pz')?.value) || 0;
   obj.position.set(px, py, pz);
 
-  // Rotação
   const rx = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rx')?.value) || 0);
   const ry = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-ry')?.value) || 0);
   const rz = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rz')?.value) || 0);
   obj.rotation.set(rx, ry, rz);
 
-  // Nome
   const nameEl = document.getElementById('prop-name');
   if (nameEl && nameEl.value) {
     obj.name = nameEl.value;
@@ -513,7 +561,7 @@ function playAnimation(name) {
 }
 
 // ===================== HELPERS =====================
-function clearScene(keepLights = false) {
+function clearScene() {
   if (state.character) {
     scene.remove(state.character);
     disposeObject(state.character);
@@ -773,7 +821,6 @@ onResize();
 // ===================== RENDER LOOP =====================
 let lastTime = performance.now();
 let frames = 0;
-let fps = 0;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -787,12 +834,15 @@ function animate() {
   frames++;
   const now = performance.now();
   if (now >= lastTime + 1000) {
-    fps = Math.round((frames * 1000) / (now - lastTime));
+    const fps = Math.round((frames * 1000) / (now - lastTime));
     document.getElementById('fps').textContent = fps + ' FPS';
     frames = 0;
     lastTime = now;
   }
 }
 animate();
+
+// Criar botões extras
+createExtraButtons();
 
 setStatus('Pronto — Importe um personagem para começar');
