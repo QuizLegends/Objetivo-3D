@@ -1,903 +1,573 @@
+/**
+ * 3D Character Editor – vanilla Three.js
+ * Personagem + Animação + Objeto + Osso + Anexação + Tamanho + Brilho
+ */
+
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-// ===================== STATE =====================
+// ─── State ────────────────────────────────────────────────────
 const state = {
   character: null,
-  skeleton: null,
+  object: null,
   bones: [],
-  objects: [],
-  selectedObject: null,
-  selectedBone: null,
+  animations: [],
   mixer: null,
-  actions: {},
   currentAction: null,
-  clock: new THREE.Clock(),
-  showGrid: true,
-  showSkeleton: false,
-  showAxes: true,
-  space: 'local',
-  exposure: 1.4,
+  charBaseScale: 1,
+  objBaseScale: 1,
+  exposure: 1.0,
+  selected: 'character', // 'character' | 'object'
+  attachedBone: null,
 };
 
-// Declaração de variáveis globais da cena
-let canvas, renderer, scene, camera, controls, transformControls;
-let ambient, dirLight, fill, grid, axes;
-let skeletonHelper = null;
+// ─── DOM refs ─────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
 
-// ===================== LOADERS =====================
-const gltfLoader = new GLTFLoader();
-const fbxLoader = new FBXLoader();
+const viewportEl   = $('viewport');
+const loadingEl    = $('loading');
+const statusEl     = $('status');
+const charInput    = $('char-input');
+const objInput     = $('obj-input');
+const animSelect   = $('anim-select');
+const boneSelect   = $('bone-select');
+const btnPlay      = $('btn-play');
+const btnStop      = $('btn-stop');
+const btnAttach    = $('btn-attach');
+const btnDetach    = $('btn-detach');
+const btnBrightUp  = $('btn-bright-up');
+const btnBrightDown= $('btn-bright-down');
+const brightLabel  = $('bright-label');
+const sizePct      = $('size-pct');
+const posX = $('pos-x'), posY = $('pos-y'), posZ = $('pos-z');
+const rotX = $('rot-x'), rotY = $('rot-y'), rotZ = $('rot-z');
+const selChar = $('sel-char'), selObj = $('sel-obj');
 
-function initApp() {
-  canvas = document.getElementById('canvas');
-  if (!canvas) {
-    console.error('Elemento canvas não encontrado!');
-    return;
-  }
+// ─── Three.js setup ───────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1b2a);
+scene.fog = new THREE.Fog(0x0d1b2a, 25, 70);
 
-  // ===================== SCENE SETUP =====================
-  const container = document.getElementById('viewport-container') || document.body;
-  const width = container.clientWidth || window.innerWidth;
-  const height = container.clientHeight || window.innerHeight;
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 1000);
+camera.position.set(0, 1.5, 4);
 
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(width, height);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = state.exposure;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = state.exposure;
+viewportEl.appendChild(renderer.domElement);
 
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b0f1a);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.target.set(0, 1, 0);
+controls.minDistance = 0.5;
+controls.maxDistance = 40;
+controls.maxPolarAngle = Math.PI / 1.75;
 
-  camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 200);
-  camera.position.set(0, 1.5, 4);
+// Lights
+const ambient = new THREE.AmbientLight(0xffffff, 1.1);
+scene.add(ambient);
 
-  controls = new OrbitControls(camera, canvas);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.target.set(0, 1, 0);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
+dirLight.position.set(3, 8, 5);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.camera.near = 0.1;
+dirLight.shadow.camera.far = 50;
+dirLight.shadow.camera.left = -6;
+dirLight.shadow.camera.right = 6;
+dirLight.shadow.camera.top = 12;
+dirLight.shadow.camera.bottom = -2;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0x4488ff, 0.45);
+fillLight.position.set(-4, 3, -3);
+scene.add(fillLight);
+
+const backLight = new THREE.DirectionalLight(0xffffff, 0.35);
+backLight.position.set(0, 4, -6);
+scene.add(backLight);
+
+// Grid + ground
+const grid = new THREE.GridHelper(20, 40, 0x1a3a5c, 0x112233);
+scene.add(grid);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x0a1520, roughness: 0.9, metalness: 0.1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Clock
+const clock = new THREE.Clock();
+
+// ─── Helpers ──────────────────────────────────────────────────
+function setStatus(msg) {
+  statusEl.textContent = msg;
+}
+
+function showLoading(show) {
+  loadingEl.classList.toggle('hidden', !show);
+}
+
+function resize() {
+  const w = viewportEl.clientWidth;
+  const h = viewportEl.clientHeight;
+  if (w === 0 || h === 0) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function focusOn(object) {
+  object.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+  const height = Math.max(size.y, 0.5);
+  controls.target.copy(center);
+  camera.position.set(center.x, center.y + height * 0.25, height * 2.4);
   controls.update();
-
-  transformControls = new TransformControls(camera, canvas);
-  transformControls.setMode('translate');
-  transformControls.setSpace('local');
-  scene.add(transformControls.getHelper());
-
-  transformControls.addEventListener('dragging-changed', (e) => {
-    controls.enabled = !e.value;
-  });
-
-  transformControls.addEventListener('objectChange', () => {
-    updatePropertiesPanel();
-  });
-
-  // Lights
-  ambient = new THREE.AmbientLight(0xffffff, 1.2);
-  scene.add(ambient);
-
-  dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
-  dirLight.position.set(4, 8, 5);
-  dirLight.castShadow = true;
-  dirLight.shadow.mapSize.set(2048, 2048);
-  dirLight.shadow.camera.near = 0.5;
-  dirLight.shadow.camera.far = 40;
-  dirLight.shadow.camera.left = -8;
-  dirLight.shadow.camera.right = 8;
-  dirLight.shadow.camera.top = 8;
-  dirLight.shadow.camera.bottom = -8;
-  scene.add(dirLight);
-
-  fill = new THREE.DirectionalLight(0xffffff, 0.9);
-  fill.position.set(-3, 2, -4);
-  scene.add(fill);
-
-  // Helpers
-  grid = new THREE.GridHelper(20, 40, 0x1e2a44, 0x141c2e);
-  scene.add(grid);
-
-  axes = new THREE.AxesHelper(1.5);
-  axes.position.y = 0.01;
-  scene.add(axes);
-
-  // Bind Events
-  setupEvents();
-  setupBrightnessButtons();
-  setupCharacterButton();
-  setStatus('Pronto — Importe um personagem para começar');
-
-  window.addEventListener('resize', onResize);
-  onResize();
-
-  // Iniciar Animação
-  animate();
 }
 
-// ===================== BRILHO =====================
-function adjustBrightness(delta) {
-  state.exposure = Math.max(0.4, Math.min(3.5, state.exposure + delta));
-  if (renderer) renderer.toneMappingExposure = state.exposure;
-
-  const label = document.getElementById('brightness-value');
-  if (label) {
-    label.textContent = Math.round(state.exposure * 100) + '%';
-  }
-
-  setStatus(`Brilho: ${state.exposure.toFixed(1)}`);
+function collectBones(root) {
+  const bones = [];
+  root.traverse((c) => {
+    if (c.isBone) bones.push(c);
+  });
+  bones.sort((a, b) => a.name.localeCompare(b.name));
+  return bones;
 }
 
-function setupBrightnessButtons() {
-  document.getElementById('btn-brightness-up')?.addEventListener('click', () => {
-    adjustBrightness(0.25);
-  });
-  document.getElementById('btn-brightness-down')?.addEventListener('click', () => {
-    adjustBrightness(-0.25);
-  });
-}
-
-function setupCharacterButton() {
-  document.getElementById('btn-select-character')?.addEventListener('click', () => {
-    if (state.character) {
-      selectObject(state.character);
-      setStatus('Personagem selecionado');
-    } else {
-      alert('Nenhum personagem carregado.');
+function enableShadows(root) {
+  root.traverse((c) => {
+    if (c.isMesh) {
+      c.castShadow = true;
+      c.receiveShadow = true;
     }
   });
 }
 
-// ===================== MODEL LOADER =====================
+function autoScaleAndPlace(object, targetHeight = 2.0) {
+  object.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+  const s = targetHeight / maxDim;
+  object.scale.setScalar(s);
+
+  object.updateMatrixWorld(true);
+  const box2 = new THREE.Box3().setFromObject(object);
+  object.position.y = -box2.min.y;
+
+  return s; // base scale
+}
+
 function loadModel(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const ext = file.name.split('.').pop().toLowerCase();
 
-    const onLoad = (result) => {
+    const onDone = (object, animations = []) => {
       URL.revokeObjectURL(url);
-      let root;
-      if (result.scene) {
-        root = result.scene;
-        root.animations = result.animations || [];
-      } else {
-        root = result;
-      }
-      root.name = file.name.replace(/\.[^/.]+$/, '');
-      resolve(root);
+      resolve({ object, animations });
     };
 
-    const onError = (err) => {
-      URL.revokeObjectURL(url);
-      reject(err);
-    };
-
-    if (ext === 'glb' || ext === 'gltf') {
-      gltfLoader.load(url, onLoad, undefined, onError);
-    } else if (ext === 'fbx') {
-      fbxLoader.load(url, onLoad, undefined, onError);
+    if (ext === 'fbx') {
+      const loader = new FBXLoader();
+      loader.load(url, (fbx) => {
+        onDone(fbx, fbx.animations || []);
+      }, undefined, reject);
+    } else if (ext === 'glb' || ext === 'gltf') {
+      const loader = new GLTFLoader();
+      loader.load(url, (gltf) => {
+        onDone(gltf.scene, gltf.animations || []);
+      }, undefined, reject);
     } else {
-      reject(new Error('Formato não suportado. Use .glb, .gltf ou .fbx'));
+      URL.revokeObjectURL(url);
+      reject(new Error('Formato não suportado. Use .fbx, .glb ou .gltf'));
     }
   });
 }
 
-// ===================== DETECTAR OSSOS =====================
-function detectBones(root) {
-  const bonesMap = new Map();
-
-  root.traverse((c) => {
-    if (c.isSkinnedMesh && c.skeleton && c.skeleton.bones) {
-      c.skeleton.bones.forEach((bone) => {
-        if (bone && bone.name) bonesMap.set(bone.uuid, bone);
-      });
-    }
-    if (c.isBone && c.name) {
-      bonesMap.set(c.uuid, c);
-    }
-  });
-
-  return Array.from(bonesMap.values());
-}
-
-// ===================== CHARACTER =====================
-async function importCharacter(file) {
+// ─── Character ────────────────────────────────────────────────
+async function loadCharacter(file) {
+  showLoading(true);
   setStatus('Carregando personagem...');
   try {
-    const root = await loadModel(file);
-
-    clearScene();
-
-    const box = new THREE.Box3().setFromObject(root);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    root.position.sub(center);
-    root.position.y += size.y / 2;
-
-    root.traverse((c) => {
-      if (c.isMesh) {
-        c.castShadow = true;
-        c.receiveShadow = true;
+    if (state.character) {
+      scene.remove(state.character);
+      if (state.mixer) {
+        state.mixer.stopAllAction();
+        state.mixer = null;
       }
-    });
-
-    scene.add(root);
-    state.character = root;
-
-    state.bones = detectBones(root);
-
-    if (state.bones.length > 0) {
-      root.traverse((c) => {
-        if (c.isSkinnedMesh && c.skeleton) {
-          state.skeleton = c.skeleton;
-        }
-      });
-
-      // Instanciação corrigida do SkeletonHelper
-      skeletonHelper = new THREE.SkeletonHelper(root);
-      skeletonHelper.visible = state.showSkeleton;
-      scene.add(skeletonHelper);
-
-      setStatus(`Personagem carregado • ${state.bones.length} ossos encontrados`);
-    } else {
-      state.skeleton = null;
-      setStatus('Personagem carregado (nenhum osso detectado)');
-      alert('Nenhum osso foi detectado neste personagem.\nTente um modelo com esqueleto (ex: Mixamo).');
+      state.currentAction = null;
+      state.character = null;
+      state.bones = [];
+      state.animations = [];
     }
 
-    if (root.animations && root.animations.length > 0) {
-      state.mixer = new THREE.AnimationMixer(root);
-      state.actions = {};
-      root.animations.forEach((clip) => {
-        state.actions[clip.name] = state.mixer.clipAction(clip);
-      });
-      buildAnimationsPanel();
-    } else {
-      state.mixer = null;
-      state.actions = {};
-      buildAnimationsPanel();
+    if (state.object && state.attachedBone) {
+      detachObject();
     }
 
-    buildHierarchy();
-    buildBonesList();
-    focusObject(root);
+    const { object, animations } = await loadModel(file);
+    enableShadows(object);
+
+    state.charBaseScale = autoScaleAndPlace(object, 2.0);
+    scene.add(object);
+    state.character = object;
+    state.bones = collectBones(object);
+    state.animations = animations;
+
+    if (animations.length > 0) {
+      state.mixer = new THREE.AnimationMixer(object);
+    }
+
+    populateBones();
+    populateAnims();
+    updateTransformUI();
+    focusOn(object);
+
+    btnPlay.disabled = animations.length === 0;
+    btnStop.disabled = animations.length === 0;
+    boneSelect.disabled = state.bones.length === 0;
+    btnAttach.disabled = !state.object || state.bones.length === 0;
+
+    setStatus(`Personagem: ${file.name} · ${state.bones.length} ossos · ${animations.length} anim.`);
   } catch (err) {
     console.error(err);
-    setStatus('Erro ao carregar');
-    alert('Não foi possível carregar este arquivo.\n' + (err.message || err));
+    setStatus('Erro ao carregar personagem');
+    alert(err.message || 'Falha ao carregar o arquivo');
+  } finally {
+    showLoading(false);
   }
 }
 
-// ===================== OBJECT =====================
-async function importObject(file) {
+// ─── Object ───────────────────────────────────────────────────
+async function loadObject(file) {
+  showLoading(true);
   setStatus('Carregando objeto...');
   try {
-    const root = await loadModel(file);
-
-    const box = new THREE.Box3().setFromObject(root);
-    const center = box.getCenter(new THREE.Vector3());
-    root.position.sub(center);
-
-    root.traverse((c) => {
-      if (c.isMesh) {
-        c.castShadow = true;
-        c.receiveShadow = true;
+    if (state.object) {
+      if (state.attachedBone) {
+        state.attachedBone.remove(state.object);
+      } else {
+        scene.remove(state.object);
       }
-    });
+      state.object = null;
+      state.attachedBone = null;
+    }
 
-    scene.add(root);
-    state.objects.push({ root, name: root.name, bone: null });
+    const { object } = await loadModel(file);
+    enableShadows(object);
 
-    selectObject(root);
-    buildHierarchy();
-    setStatus(`Objeto "${root.name}" importado`);
+    state.objBaseScale = autoScaleAndPlace(object, 0.4);
+    object.position.set(0.6, object.position.y, 0);
+
+    scene.add(object);
+    state.object = object;
+    state.attachedBone = null;
+
+    btnAttach.disabled = !state.character || state.bones.length === 0;
+    btnDetach.disabled = true;
+    selObj.checked = true;
+    state.selected = 'object';
+    updateTransformUI();
+
+    setStatus(`Objeto: ${file.name}`);
   } catch (err) {
     console.error(err);
     setStatus('Erro ao carregar objeto');
-    alert('Não foi possível carregar este arquivo.\n' + (err.message || err));
+    alert(err.message || 'Falha ao carregar o arquivo');
+  } finally {
+    showLoading(false);
   }
 }
 
-// ===================== ATTACH / DETACH =====================
-function attachToBone() {
-  if (!state.selectedObject) {
-    alert('Selecione um objeto primeiro.');
-    return;
-  }
-  if (!state.selectedBone) {
-    alert('Selecione um osso primeiro.\nAbra a aba "Ossos" e toque no osso desejado.');
+// ─── Bones UI ─────────────────────────────────────────────────
+function populateBones() {
+  boneSelect.innerHTML = '';
+  if (state.bones.length === 0) {
+    boneSelect.innerHTML = '<option value="">Nenhum osso</option>';
     return;
   }
 
-  const obj = state.selectedObject;
-  const bone = state.selectedBone;
+  const preferred = ['RightHand', 'LeftHand', 'mixamorigRightHand', 'mixamorigLeftHand',
+    'RightHandIndex1', 'LeftHandIndex1', 'Head', 'Spine', 'Hips'];
 
-  transformControls.detach();
-  bone.attach(obj);
+  const sorted = [...state.bones].sort((a, b) => {
+    const ai = preferred.indexOf(a.name);
+    const bi = preferred.indexOf(b.name);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
-  const entry = state.objects.find(o => o.root === obj);
-  if (entry) entry.bone = bone;
+  sorted.forEach((bone) => {
+    const opt = document.createElement('option');
+    opt.value = bone.name;
+    opt.textContent = bone.name;
+    if (bone.name === 'RightHand' || bone.name === 'mixamorigRightHand') {
+      opt.selected = true;
+    }
+    boneSelect.appendChild(opt);
+  });
+}
 
-  transformControls.attach(obj);
+function findBone(name) {
+  return state.bones.find((b) => b.name === name) || null;
+}
 
-  buildHierarchy();
-  updatePropertiesPanel();
-  setStatus(`"${obj.name}" anexado a "${bone.name}"`);
+// ─── Attach / Detach ──────────────────────────────────────────
+function attachObject() {
+  if (!state.object || !state.character) return;
+  const boneName = boneSelect.value;
+  const bone = findBone(boneName);
+  if (!bone) {
+    alert('Osso não encontrado');
+    return;
+  }
+
+  if (state.object.parent) {
+    state.object.parent.remove(state.object);
+  }
+
+  bone.add(state.object);
+  state.object.position.set(0, 0, 0);
+  state.object.rotation.set(0, 0, 0);
+  state.object.scale.setScalar(1);
+
+  state.objBaseScale = state.object.scale.x;
+
+  state.attachedBone = bone;
+  btnDetach.disabled = false;
+  selObj.checked = true;
+  state.selected = 'object';
+  updateTransformUI();
+  setStatus(`Objeto anexado a: ${bone.name}`);
 }
 
 function detachObject() {
-  if (!state.selectedObject) {
-    alert('Selecione um objeto primeiro.');
-    return;
-  }
+  if (!state.object || !state.attachedBone) return;
 
-  const obj = state.selectedObject;
+  state.object.updateMatrixWorld(true);
+  const worldPos = new THREE.Vector3();
+  const worldQuat = new THREE.Quaternion();
+  const worldScale = new THREE.Vector3();
+  state.object.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-  transformControls.detach();
-  scene.attach(obj);
+  state.attachedBone.remove(state.object);
+  scene.add(state.object);
 
-  const entry = state.objects.find(o => o.root === obj);
-  if (entry) entry.bone = null;
+  state.object.position.copy(worldPos);
+  state.object.quaternion.copy(worldQuat);
+  state.object.scale.copy(worldScale);
 
-  transformControls.attach(obj);
-
-  buildHierarchy();
-  updatePropertiesPanel();
-  setStatus(`"${obj.name}" desanexado`);
+  state.objBaseScale = worldScale.x;
+  state.attachedBone = null;
+  btnDetach.disabled = true;
+  updateTransformUI();
+  setStatus('Objeto desanexado');
 }
 
-// ===================== SELECTION =====================
-function selectObject(obj) {
-  state.selectedObject = obj;
+// ─── Animations ───────────────────────────────────────────────
+function populateAnims() {
+  animSelect.innerHTML = '';
+  if (state.animations.length === 0) {
+    animSelect.innerHTML = '<option value="">Nenhuma animação</option>';
+    animSelect.disabled = true;
+    return;
+  }
+  animSelect.disabled = false;
+  state.animations.forEach((clip, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = clip.name || `Animação ${i + 1}`;
+    animSelect.appendChild(opt);
+  });
+}
 
-  if (obj) {
-    transformControls.attach(obj);
+function playAnimation(index) {
+  if (!state.mixer || !state.animations[index]) return;
+  if (state.currentAction) {
+    state.currentAction.fadeOut(0.2);
+  }
+  const action = state.mixer.clipAction(state.animations[index]);
+  action.reset().fadeIn(0.2).play();
+  state.currentAction = action;
+  btnPlay.textContent = '⏸ Pause';
+  setStatus(`Animação: ${state.animations[index].name || index}`);
+}
+
+function togglePlay() {
+  if (!state.mixer || !state.currentAction) {
+    if (state.animations.length > 0) {
+      playAnimation(0);
+      animSelect.value = '0';
+    }
+    return;
+  }
+  if (state.currentAction.paused) {
+    state.currentAction.paused = false;
+    btnPlay.textContent = '⏸ Pause';
   } else {
-    transformControls.detach();
+    state.currentAction.paused = true;
+    btnPlay.textContent = '▶ Play';
   }
-
-  highlightHierarchy();
-  updatePropertiesPanel();
 }
 
-function selectBone(bone) {
-  state.selectedBone = bone;
-  highlightBonesList();
-  highlightHierarchy();
-  updatePropertiesPanel();
-  setStatus(`Osso: ${bone.name}`);
-}
-
-// ===================== UI =====================
-function buildHierarchy() {
-  const list = document.getElementById('hierarchy-list');
-  if (!list) return;
-  list.innerHTML = '';
-
-  if (state.character) {
-    const charLi = createTreeItem(state.character.name || 'Character', state.character);
-    list.appendChild(charLi);
-
-    if (state.bones.length) {
-      const armatureLi = document.createElement('li');
-      armatureLi.innerHTML = `<span class="toggle">▼</span> Armature (${state.bones.length} ossos)`;
-      list.appendChild(armatureLi);
-    }
+function stopAnimation() {
+  if (state.currentAction) {
+    state.currentAction.fadeOut(0.15);
+    state.currentAction = null;
   }
-
-  state.objects.forEach(entry => {
-    const li = createTreeItem(entry.name, entry.root);
-    if (entry.bone) {
-      li.innerHTML += ` <span class="muted">→ ${entry.bone.name}</span>`;
-    }
-    list.appendChild(li);
-  });
+  if (state.mixer) {
+    state.mixer.stopAllAction();
+  }
+  btnPlay.textContent = '▶ Play';
+  setStatus('Animação parada');
 }
 
-function createTreeItem(name, obj) {
-  const li = document.createElement('li');
-  li.textContent = name;
-  li.dataset.uuid = obj.uuid;
-  li.style.padding = '10px 8px';
-  li.addEventListener('click', (e) => {
-    e.stopPropagation();
-    selectObject(obj);
-  });
-  return li;
+// ─── Transform UI ─────────────────────────────────────────────
+function getSelectedObject() {
+  if (state.selected === 'object' && state.object) return state.object;
+  if (state.selected === 'character' && state.character) return state.character;
+  return null;
 }
 
-function buildBonesList() {
-  const list = document.getElementById('bones-list');
-  if (!list) return;
-  list.innerHTML = '';
+function getBaseScale() {
+  return state.selected === 'object' ? state.objBaseScale : state.charBaseScale;
+}
 
-  if (!state.bones.length) {
-    list.innerHTML = '<li class="muted" style="padding:12px 8px;">Nenhum osso detectado.<br>Importe um personagem com esqueleto (Mixamo, etc).</li>';
+function updateTransformUI() {
+  const obj = getSelectedObject();
+  if (!obj) {
+    sizePct.value = 100;
     return;
   }
 
-  const sorted = [...state.bones].sort((a, b) => a.name.localeCompare(b.name));
+  posX.value = +obj.position.x.toFixed(3);
+  posY.value = +obj.position.y.toFixed(3);
+  posZ.value = +obj.position.z.toFixed(3);
 
-  sorted.forEach(bone => {
-    const li = document.createElement('li');
-    li.textContent = bone.name;
-    li.dataset.uuid = bone.uuid;
-    li.style.padding = '12px 10px';
-    li.style.fontSize = '14px';
-    li.style.borderBottom = '1px solid #1e2a44';
-    li.style.cursor = 'pointer';
+  rotX.value = +(obj.rotation.x * 180 / Math.PI).toFixed(1);
+  rotY.value = +(obj.rotation.y * 180 / Math.PI).toFixed(1);
+  rotZ.value = +(obj.rotation.z * 180 / Math.PI).toFixed(1);
 
-    li.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      selectBone(bone);
-
-      document.querySelectorAll('#bones-list li').forEach(el => el.classList.remove('selected'));
-      li.classList.add('selected');
-    });
-
-    list.appendChild(li);
-  });
+  const base = getBaseScale() || 1;
+  const pct = Math.round((obj.scale.x / base) * 100);
+  sizePct.value = pct;
 }
 
-function highlightHierarchy() {
-  document.querySelectorAll('#hierarchy-list li').forEach(li => {
-    li.classList.toggle('selected',
-      (state.selectedObject && li.dataset.uuid === state.selectedObject.uuid) ||
-      (state.selectedBone && li.dataset.uuid === state.selectedBone.uuid)
-    );
-  });
-}
-
-function highlightBonesList() {
-  document.querySelectorAll('#bones-list li').forEach(li => {
-    li.classList.toggle('selected', state.selectedBone && li.dataset.uuid === state.selectedBone.uuid);
-  });
-}
-
-function updatePropertiesPanel() {
-  const container = document.getElementById('properties-content');
-  if (!container) return;
-
-  const obj = state.selectedObject;
-  const bone = state.selectedBone;
-
-  if (!obj && !bone) {
-    container.innerHTML = '<p class="muted">Nenhum objeto selecionado</p>';
-    return;
-  }
-
-  if (bone && !obj) {
-    container.innerHTML = `
-      <div class="prop-row"><label>Osso</label><input type="text" value="${bone.name}" readonly /></div>
-      <p class="muted" style="margin-top:10px">Osso selecionado.<br>Agora selecione a arma e clique em <b>Anexar ao Osso</b>.</p>
-    `;
-    return;
-  }
-
-  const currentSize = Math.round(((obj.scale.x + obj.scale.y + obj.scale.z) / 3) * 100);
-  const pos = obj.position;
-  const rot = obj.rotation;
-  const parentName = obj.parent && obj.parent.isBone
-    ? obj.parent.name
-    : (obj.parent === scene ? 'Scene' : (obj.parent?.name || '—'));
-
-  container.innerHTML = `
-    <div class="prop-row"><label>Nome</label><input type="text" id="prop-name" value="${obj.name}" /></div>
-    <div class="prop-row"><label>Parent</label><input type="text" value="${parentName}" readonly /></div>
-
-    <div class="prop-row" style="margin-top:12px;">
-      <label style="width:70px;">Tamanho</label>
-      <input type="number" id="prop-size" value="${currentSize}" step="5" min="1" max="500" style="flex:1; font-size:16px; padding:10px;" />
-    </div>
-    <p class="muted" style="margin:4px 0 10px 0; font-size:11px;">
-      100 = original | 50 = metade | 30 = pequeno
-    </p>
-
-    <div class="prop-row">
-      <label>Posição</label>
-      <div class="vec3">
-        <input type="number" step="0.01" id="prop-px" value="${pos.x.toFixed(3)}" />
-        <input type="number" step="0.01" id="prop-py" value="${pos.y.toFixed(3)}" />
-        <input type="number" step="0.01" id="prop-pz" value="${pos.z.toFixed(3)}" />
-      </div>
-    </div>
-    <div class="prop-row">
-      <label>Rotação</label>
-      <div class="vec3">
-        <input type="number" step="1" id="prop-rx" value="${THREE.MathUtils.radToDeg(rot.x).toFixed(0)}" />
-        <input type="number" step="1" id="prop-ry" value="${THREE.MathUtils.radToDeg(rot.y).toFixed(0)}" />
-        <input type="number" step="1" id="prop-rz" value="${THREE.MathUtils.radToDeg(rot.z).toFixed(0)}" />
-      </div>
-    </div>
-
-    <div style="margin-top:12px; display:flex; gap:8px;">
-      <button class="btn small" id="btn-apply-props" style="flex:1; padding:12px;">Aplicar</button>
-      <button class="btn small" id="btn-reset-props" style="padding:12px;">Resetar</button>
-    </div>
-  `;
-
-  document.getElementById('btn-apply-props')?.addEventListener('click', applyProperties);
-  document.getElementById('btn-reset-props')?.addEventListener('click', () => {
-    obj.position.set(0, 0, 0);
-    obj.rotation.set(0, 0, 0);
-    obj.scale.set(1, 1, 1);
-    updatePropertiesPanel();
-  });
-
-  document.getElementById('prop-size')?.addEventListener('change', applyProperties);
-  document.getElementById('prop-size')?.addEventListener('input', applyProperties);
-}
-
-function applyProperties() {
-  const obj = state.selectedObject;
+function applyPosition() {
+  const obj = getSelectedObject();
   if (!obj) return;
-
-  const sizeInput = document.getElementById('prop-size');
-  if (sizeInput) {
-    let size = parseFloat(sizeInput.value) || 100;
-    size = Math.max(1, Math.min(500, size));
-    const scale = size / 100;
-    obj.scale.set(scale, scale, scale);
-  }
-
-  const px = parseFloat(document.getElementById('prop-px')?.value) || 0;
-  const py = parseFloat(document.getElementById('prop-py')?.value) || 0;
-  const pz = parseFloat(document.getElementById('prop-pz')?.value) || 0;
-  obj.position.set(px, py, pz);
-
-  const rx = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rx')?.value) || 0);
-  const ry = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-ry')?.value) || 0);
-  const rz = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rz')?.value) || 0);
-  obj.rotation.set(rx, ry, rz);
-
-  const nameEl = document.getElementById('prop-name');
-  if (nameEl && nameEl.value) {
-    obj.name = nameEl.value;
-    const entry = state.objects.find(o => o.root === obj);
-    if (entry) entry.name = nameEl.value;
-    buildHierarchy();
-  }
-}
-
-function buildAnimationsPanel() {
-  const container = document.getElementById('animations-content');
-  const controlsEl = document.getElementById('anim-controls');
-  if (!container || !controlsEl) return;
-
-  const names = Object.keys(state.actions);
-  if (!names.length) {
-    container.innerHTML = '<p class="muted">Nenhuma animação</p>';
-    controlsEl.classList.add('hidden');
-    return;
-  }
-
-  container.innerHTML = '';
-  names.forEach(name => {
-    const div = document.createElement('div');
-    div.className = 'anim-item';
-    div.textContent = name;
-    div.style.padding = '10px 8px';
-    div.addEventListener('click', () => playAnimation(name));
-    container.appendChild(div);
-  });
-  controlsEl.classList.remove('hidden');
-}
-
-function playAnimation(name) {
-  if (!state.mixer || !state.actions[name]) return;
-
-  Object.values(state.actions).forEach(a => a.stop());
-  state.currentAction = state.actions[name];
-  state.currentAction.reset().play();
-
-  document.querySelectorAll('.anim-item').forEach(el => {
-    el.classList.toggle('active', el.textContent === name);
-  });
-  setStatus(`Animação: ${name}`);
-}
-
-// ===================== HELPERS =====================
-function clearScene() {
-  if (state.character) {
-    scene.remove(state.character);
-    disposeObject(state.character);
-    state.character = null;
-  }
-  state.objects.forEach(o => {
-    scene.remove(o.root);
-    disposeObject(o.root);
-  });
-  state.objects = [];
-
-  if (skeletonHelper) {
-    scene.remove(skeletonHelper);
-    skeletonHelper = null;
-  }
-
-  state.skeleton = null;
-  state.bones = [];
-  state.mixer = null;
-  state.actions = {};
-  state.currentAction = null;
-  state.selectedObject = null;
-  state.selectedBone = null;
-  if (transformControls) transformControls.detach();
-
-  buildHierarchy();
-  buildBonesList();
-  buildAnimationsPanel();
-  updatePropertiesPanel();
-}
-
-function disposeObject(obj) {
-  obj.traverse((c) => {
-    if (c.geometry) c.geometry.dispose();
-    if (c.material) {
-      if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
-      else c.material.dispose();
-    }
-  });
-}
-
-function focusObject(obj) {
-  if (!obj || !camera || !controls) return;
-  const box = new THREE.Box3().setFromObject(obj);
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z);
-  const dist = maxDim * 2.2;
-
-  camera.position.set(center.x + dist * 0.6, center.y + dist * 0.4, center.z + dist * 0.8);
-  controls.target.copy(center);
-  controls.update();
-}
-
-function setStatus(msg) {
-  const el = document.getElementById('status');
-  if (el) el.textContent = msg;
-}
-
-// ===================== EXPORT =====================
-function exportGLB() {
-  if (!state.character && state.objects.length === 0) {
-    alert('Nada para exportar.');
-    return;
-  }
-
-  const exporter = new GLTFExporter();
-  const exportRoot = new THREE.Group();
-  exportRoot.name = 'Export';
-
-  if (state.character) exportRoot.add(state.character.clone(true));
-  state.objects.forEach(o => exportRoot.add(o.root.clone(true)));
-
-  exporter.parse(
-    exportRoot,
-    (result) => {
-      const blob = new Blob([result], { type: 'application/octet-stream' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'character_export.glb';
-      link.click();
-      URL.revokeObjectURL(link.href);
-      setStatus('GLB exportado');
-    },
-    (err) => {
-      console.error(err);
-      alert('Erro ao exportar GLB.');
-    },
-    { binary: true, animations: state.character?.animations || [] }
+  obj.position.set(
+    parseFloat(posX.value) || 0,
+    parseFloat(posY.value) || 0,
+    parseFloat(posZ.value) || 0
   );
 }
 
-// ===================== EVENTS SETUP =====================
-function setupEvents() {
-  document.getElementById('btn-import-character')?.addEventListener('click', () => {
-    document.getElementById('file-character')?.click();
-  });
-  document.getElementById('file-character')?.addEventListener('change', (e) => {
-    if (e.target.files[0]) importCharacter(e.target.files[0]);
-    e.target.value = '';
-  });
-
-  document.getElementById('btn-import-object')?.addEventListener('click', () => {
-    document.getElementById('file-object')?.click();
-  });
-  document.getElementById('file-object')?.addEventListener('change', (e) => {
-    if (e.target.files[0]) importObject(e.target.files[0]);
-    e.target.value = '';
-  });
-
-  document.getElementById('btn-attach')?.addEventListener('click', attachToBone);
-  document.getElementById('btn-detach')?.addEventListener('click', detachObject);
-  document.getElementById('btn-export')?.addEventListener('click', exportGLB);
-  document.getElementById('btn-new')?.addEventListener('click', () => {
-    if (confirm('Limpar cena atual?')) clearScene();
-  });
-
-  document.getElementById('mode-translate')?.addEventListener('click', () => setMode('translate'));
-  document.getElementById('mode-rotate')?.addEventListener('click', () => setMode('rotate'));
-  document.getElementById('mode-scale')?.addEventListener('click', () => setMode('scale'));
-
-  document.getElementById('btn-space')?.addEventListener('click', () => {
-    state.space = state.space === 'local' ? 'world' : 'local';
-    if (transformControls) transformControls.setSpace(state.space);
-    const btnSpace = document.getElementById('btn-space');
-    if (btnSpace) btnSpace.textContent = state.space === 'local' ? 'Local' : 'World';
-  });
-
-  document.getElementById('btn-grid')?.addEventListener('click', toggleGrid);
-  document.getElementById('chk-grid')?.addEventListener('change', (e) => {
-    state.showGrid = e.target.checked;
-    if (grid) grid.visible = state.showGrid;
-    document.getElementById('btn-grid')?.classList.toggle('active', state.showGrid);
-  });
-
-  document.getElementById('btn-skeleton')?.addEventListener('click', toggleSkeleton);
-  document.getElementById('chk-skeleton')?.addEventListener('change', (e) => {
-    state.showSkeleton = e.target.checked;
-    if (skeletonHelper) skeletonHelper.visible = state.showSkeleton;
-    document.getElementById('btn-skeleton')?.classList.toggle('active', state.showSkeleton);
-  });
-
-  document.getElementById('btn-axes')?.addEventListener('click', () => {
-    state.showAxes = !state.showAxes;
-    if (axes) axes.visible = state.showAxes;
-    const chkAxes = document.getElementById('chk-axes');
-    if (chkAxes) chkAxes.checked = state.showAxes;
-    document.getElementById('btn-axes')?.classList.toggle('active', state.showAxes);
-  });
-  document.getElementById('chk-axes')?.addEventListener('change', (e) => {
-    state.showAxes = e.target.checked;
-    if (axes) axes.visible = state.showAxes;
-    document.getElementById('btn-axes')?.classList.toggle('active', state.showAxes);
-  });
-
-  document.getElementById('chk-wireframe')?.addEventListener('change', (e) => {
-    const wire = e.target.checked;
-    scene?.traverse((c) => {
-      if (c.isMesh && c.material) {
-        if (Array.isArray(c.material)) c.material.forEach(m => m.wireframe = wire);
-        else c.material.wireframe = wire;
-      }
-    });
-  });
-
-  document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
-    if (camera && controls) {
-      camera.position.set(0, 1.5, 4);
-      controls.target.set(0, 1, 0);
-      controls.update();
-    }
-  });
-
-  document.getElementById('btn-focus')?.addEventListener('click', () => {
-    focusObject(state.selectedObject || state.character);
-  });
-
-  document.getElementById('btn-play')?.addEventListener('click', () => {
-    if (state.currentAction) state.currentAction.paused = false;
-  });
-  document.getElementById('btn-pause')?.addEventListener('click', () => {
-    if (state.currentAction) state.currentAction.paused = true;
-  });
-  document.getElementById('btn-stop')?.addEventListener('click', () => {
-    if (state.currentAction) {
-      state.currentAction.stop();
-      state.currentAction = null;
-    }
-  });
-
-  // Tabs
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      tab.classList.add('active');
-      const target = document.getElementById('tab-' + tab.dataset.tab);
-      if (target) target.classList.add('active');
-    });
-  });
-
-  // Busca de ossos
-  document.getElementById('search-bones')?.addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase().trim();
-    document.querySelectorAll('#bones-list li').forEach(li => {
-      const text = li.textContent.toLowerCase();
-      li.style.display = (!q || text.includes(q)) ? '' : 'none';
-    });
-  });
-
-  // Busca de hierarquia
-  document.getElementById('search-hierarchy')?.addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase().trim();
-    document.querySelectorAll('#hierarchy-list li').forEach(li => {
-      const text = li.textContent.toLowerCase();
-      li.style.display = (!q || text.includes(q)) ? '' : 'none';
-    });
-  });
-
-  window.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT') return;
-    if (e.key === 'w' || e.key === 'W') setMode('translate');
-    if (e.key === 'e' || e.key === 'E') setMode('rotate');
-    if (e.key === 'r' || e.key === 'R') setMode('scale');
-    if (e.key === 'f' || e.key === 'F') focusObject(state.selectedObject || state.character);
-  });
-
-  document.getElementById('toggle-left')?.addEventListener('click', () => {
-    document.getElementById('panel-left')?.classList.toggle('open');
-    document.getElementById('panel-right')?.classList.remove('open');
-  });
-  document.getElementById('toggle-right')?.addEventListener('click', () => {
-    document.getElementById('panel-right')?.classList.toggle('open');
-    document.getElementById('panel-left')?.classList.remove('open');
-  });
+function applyRotation() {
+  const obj = getSelectedObject();
+  if (!obj) return;
+  obj.rotation.set(
+    (parseFloat(rotX.value) || 0) * Math.PI / 180,
+    (parseFloat(rotY.value) || 0) * Math.PI / 180,
+    (parseFloat(rotZ.value) || 0) * Math.PI / 180
+  );
 }
 
-function setMode(mode) {
-  if (transformControls) transformControls.setMode(mode);
-  document.querySelectorAll('.transform-modes .btn-icon').forEach(b => b.classList.remove('active'));
-  document.getElementById('mode-' + mode)?.classList.add('active');
+function applySize() {
+  const obj = getSelectedObject();
+  if (!obj) return;
+  const pct = Math.max(1, parseFloat(sizePct.value) || 100);
+  const base = getBaseScale() || 1;
+  const s = base * (pct / 100);
+  obj.scale.setScalar(s);
 }
 
-function toggleGrid() {
-  state.showGrid = !state.showGrid;
-  if (grid) grid.visible = state.showGrid;
-  const chk = document.getElementById('chk-grid');
-  if (chk) chk.checked = state.showGrid;
-  document.getElementById('btn-grid')?.classList.toggle('active', state.showGrid);
+// ─── Brightness ───────────────────────────────────────────────
+function changeBrightness(delta) {
+  state.exposure = Math.max(0.2, Math.min(3.5, state.exposure + delta));
+  renderer.toneMappingExposure = state.exposure;
+  brightLabel.textContent = `Exposição: ${state.exposure.toFixed(2)}`;
 }
 
-function toggleSkeleton() {
-  state.showSkeleton = !state.showSkeleton;
-  if (skeletonHelper) skeletonHelper.visible = state.showSkeleton;
-  const chk = document.getElementById('chk-skeleton');
-  if (chk) chk.checked = state.showSkeleton;
-  document.getElementById('btn-skeleton')?.classList.toggle('active', state.showSkeleton);
-}
+// ─── Event listeners ──────────────────────────────────────────
+charInput.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (file) loadCharacter(file);
+  e.target.value = '';
+});
 
-function onResize() {
-  const container = document.getElementById('viewport-container') || document.body;
-  if (!container || !camera || !renderer) return;
-  const w = container.clientWidth || window.innerWidth;
-  const h = container.clientHeight || window.innerHeight;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
-}
+objInput.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (file) loadObject(file);
+  e.target.value = '';
+});
 
-// ===================== RENDER LOOP =====================
-let lastTime = performance.now();
-let frames = 0;
+animSelect.addEventListener('change', () => {
+  const idx = parseInt(animSelect.value, 10);
+  if (!isNaN(idx)) playAnimation(idx);
+});
 
+btnPlay.addEventListener('click', togglePlay);
+btnStop.addEventListener('click', stopAnimation);
+btnAttach.addEventListener('click', attachObject);
+btnDetach.addEventListener('click', detachObject);
+
+btnBrightUp.addEventListener('click', () => changeBrightness(0.15));
+btnBrightDown.addEventListener('click', () => changeBrightness(-0.15));
+
+selChar.addEventListener('change', () => {
+  if (selChar.checked) {
+    state.selected = 'character';
+    updateTransformUI();
+  }
+});
+selObj.addEventListener('change', () => {
+  if (selObj.checked) {
+    state.selected = 'object';
+    updateTransformUI();
+  }
+});
+
+[posX, posY, posZ].forEach((el) => {
+  el.addEventListener('change', applyPosition);
+  el.addEventListener('input', applyPosition);
+});
+[rotX, rotY, rotZ].forEach((el) => {
+  el.addEventListener('change', applyRotation);
+  el.addEventListener('input', applyRotation);
+});
+sizePct.addEventListener('change', applySize);
+sizePct.addEventListener('input', applySize);
+
+// ─── Animation loop ───────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
-
-  const delta = state.clock.getDelta();
+  const delta = clock.getDelta();
   if (state.mixer) state.mixer.update(delta);
-
-  if (controls) controls.update();
-  if (renderer && scene && camera) renderer.render(scene, camera);
-
-  frames++;
-  const now = performance.now();
-  if (now >= lastTime + 1000) {
-    const fps = Math.round((frames * 1000) / (now - lastTime));
-    const fpsEl = document.getElementById('fps');
-    if (fpsEl) fpsEl.textContent = fps + ' FPS';
-    frames = 0;
-    lastTime = now;
-  }
+  controls.update();
+  renderer.render(scene, camera);
 }
+animate();
 
-// ===================== INIT =====================
-document.addEventListener('DOMContentLoaded', () => {
-  initApp();
-});
+setStatus('Pronto — importe um personagem .fbx / .glb');
