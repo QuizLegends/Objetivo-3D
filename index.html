@@ -1,135 +1,124 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SENTINEL OS v4.4 - FINE-TUNED</title>
-    <style>
-        * { box-sizing: border-box; }
-        body { background: #050505; color: #00ff41; font-family: 'Courier New', monospace; padding: 10px; margin: 0; display: flex; justify-content: center; }
-        .panel { width: 95%; max-width: 450px; border: 1px solid #00ff41; padding: 15px; background: #000; box-shadow: 0 0 15px rgba(0,255,65,0.2); margin-top: 10px; }
-        .metrics-bar { display: flex; justify-content: space-between; background: #111; padding: 8px; border: 1px solid #222; font-size: 10px; margin-bottom: 10px; color: #00ff41; }
-        .metric-val { color: #fff; font-weight: bold; }
-        #console { height: 220px; overflow-y: auto; background: #000; border: 1px solid #113311; padding: 10px; font-size: 11px; margin-bottom: 10px; text-align: left; color: #008822; }
-        .found-screen { background: #fff !important; color: #000 !important; }
-        button { background: #00ff41; color: #000; border: none; padding: 18px; width: 100%; font-weight: bold; cursor: pointer; text-transform: uppercase; }
-        button:disabled { background: #003300; color: #006600; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Bone Attacher — Editor 3D</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦴</text></svg>" />
 </head>
 <body>
-
-    <div class="panel" id="mainPanel">
-        <h2 style="margin: 0 0 10px 0; font-size: 1.5em; text-align: center;">SENTINEL v4.4</h2>
-        
-        <div class="metrics-bar">
-            <span>PASS: <span id="counter" class="metric-val">0</span></span>
-            <span>TIME: <span id="timer" class="metric-val">00:00</span></span>
+  <div id="app">
+    <!-- Top Toolbar -->
+    <header id="toolbar">
+      <div class="toolbar-left">
+        <div class="logo">🦴 Bone Attacher</div>
+        <button id="btn-new" class="btn" title="Novo projeto">Novo</button>
+        <button id="btn-import-character" class="btn primary" title="Importar personagem (.glb/.gltf/.fbx)">Importar Personagem</button>
+        <button id="btn-import-object" class="btn" title="Importar objeto (.glb/.gltf/.fbx)">Importar Objeto</button>
+      </div>
+      <div class="toolbar-center">
+        <div class="transform-modes">
+          <button id="mode-translate" class="btn-icon active" title="Mover (W)">↔</button>
+          <button id="mode-rotate" class="btn-icon" title="Rotacionar (E)">↻</button>
+          <button id="mode-scale" class="btn-icon" title="Escalar (R)">⤢</button>
         </div>
+        <button id="btn-space" class="btn small" title="Espaço Local/World">Local</button>
+      </div>
+      <div class="toolbar-right">
+        <button id="btn-attach" class="btn accent" title="Anexar objeto selecionado ao osso selecionado">Anexar ao Osso</button>
+        <button id="btn-detach" class="btn" title="Desanexar objeto">Desanexar</button>
+        <button id="btn-export" class="btn" title="Exportar GLB">Exportar GLB</button>
+      </div>
+    </header>
 
-        <div id="console">> SISTEMA OTIMIZADO PRONTO...</div>
-        <button id="btn" onclick="iniciarAtaqueOmega()">INICIAR INJEÇÃO</button>
+    <div id="main">
+      <!-- Left Panel: Hierarchy + Bones -->
+      <aside id="panel-left" class="panel">
+        <div class="panel-tabs">
+          <button class="tab active" data-tab="hierarchy">Hierarquia</button>
+          <button class="tab" data-tab="bones">Ossos</button>
+        </div>
+        <div id="tab-hierarchy" class="tab-content active">
+          <div class="search-box">
+            <input type="text" id="search-hierarchy" placeholder="Buscar..." />
+          </div>
+          <ul id="hierarchy-list" class="tree"></ul>
+        </div>
+        <div id="tab-bones" class="tab-content">
+          <div class="search-box">
+            <input type="text" id="search-bones" placeholder="Buscar ossos..." />
+          </div>
+          <ul id="bones-list" class="list"></ul>
+        </div>
+      </aside>
+
+      <!-- Center: Viewport -->
+      <div id="viewport-container">
+        <canvas id="canvas"></canvas>
+        <div id="viewport-overlay">
+          <div id="fps" class="hud">-- FPS</div>
+          <div id="status" class="hud">Pronto</div>
+        </div>
+        <div id="viewport-controls">
+          <button id="btn-grid" class="btn-icon active" title="Grade">▦</button>
+          <button id="btn-skeleton" class="btn-icon" title="Esqueleto">🦴</button>
+          <button id="btn-axes" class="btn-icon active" title="Eixos">✚</button>
+          <button id="btn-reset-camera" class="btn-icon" title="Resetar câmera">⌂</button>
+          <button id="btn-focus" class="btn-icon" title="Focar selecionado">◎</button>
+        </div>
+      </div>
+
+      <!-- Right Panel: Properties + Animation -->
+      <aside id="panel-right" class="panel">
+        <div class="panel-section">
+          <h3>Propriedades</h3>
+          <div id="properties-content">
+            <p class="muted">Nenhum objeto selecionado</p>
+          </div>
+        </div>
+        <div class="panel-section">
+          <h3>Animações</h3>
+          <div id="animations-content">
+            <p class="muted">Nenhuma animação</p>
+          </div>
+          <div id="anim-controls" class="hidden">
+            <button id="btn-play" class="btn small">▶</button>
+            <button id="btn-pause" class="btn small">⏸</button>
+            <button id="btn-stop" class="btn small">⏹</button>
+            <input type="range" id="anim-slider" min="0" max="100" value="0" />
+          </div>
+        </div>
+        <div class="panel-section">
+          <h3>Visualização</h3>
+          <label class="checkbox"><input type="checkbox" id="chk-grid" checked /> Grade</label>
+          <label class="checkbox"><input type="checkbox" id="chk-skeleton" /> Esqueleto</label>
+          <label class="checkbox"><input type="checkbox" id="chk-axes" checked /> Eixos</label>
+          <label class="checkbox"><input type="checkbox" id="chk-wireframe" /> Wireframe</label>
+        </div>
+      </aside>
     </div>
 
-    <iframe id="targetFrame" src="alvo.html" style="display:none;"></iframe>
+    <!-- Mobile toggle buttons -->
+    <div id="mobile-toggles">
+      <button id="toggle-left" class="btn-icon">☰</button>
+      <button id="toggle-right" class="btn-icon">⚙</button>
+    </div>
+  </div>
 
-    <script>
-        const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
-        let encontrado = false;
-        let totalSenhas = 0;
-        let segundos = 0;
-        let intervaloTimer;
+  <!-- Hidden file inputs -->
+  <input type="file" id="file-character" accept=".glb,.gltf,.fbx" hidden />
+  <input type="file" id="file-object" accept=".glb,.gltf,.fbx" hidden />
 
-        async function log(m) {
-            const c = document.getElementById('console');
-            c.innerHTML += `<div>> ${m}</div>`;
-            c.scrollTop = c.scrollHeight;
-            if(c.childNodes.length > 40) c.removeChild(c.firstChild);
-        }
-
-        function atualizarCronometro() {
-            segundos++;
-            const mins = Math.floor(segundos / 60).toString().padStart(2, '0');
-            const segs = (segundos % 60).toString().padStart(2, '0');
-            document.getElementById('timer').innerText = `${mins}:${segs}`;
-        }
-
-        async function iniciarAtaqueOmega() {
-            if (encontrado) return;
-            const btn = document.getElementById('btn');
-            const frame = document.getElementById('targetFrame');
-            const targetDoc = frame.contentDocument || frame.contentWindow.document;
-            
-            // Cache de elementos do DOM para velocidade máxima
-            const inputField = targetDoc.getElementById('pass');
-            const targetBtn = targetDoc.querySelector('button');
-            const statusLabel = targetDoc.getElementById('status');
-            const counterDisplay = document.getElementById('counter');
-
-            btn.disabled = true;
-            btn.innerText = "EM CURSO...";
-            intervaloTimer = setInterval(atualizarCronometro, 1000);
-            log("Motor v4.4 (Fine-Tuned) ativo.");
-
-            let tamanhoAtual = 1;
-            let indices = [0];
-            let lotesSemLog = 0;
-
-            const rodarBloco = () => {
-                if (encontrado) return;
-
-                for (let i = 0; i < 200; i++) {
-                    // Otimização: Monta string apenas uma vez por teste
-                    let senha = "";
-                    for (let j = 0; j < tamanhoAtual; j++) {
-                        senha += charset[indices[j]];
-                    }
-
-                    // Injeção direta
-                    totalSenhas++;
-                    inputField.value = senha;
-                    targetBtn.click();
-
-                    if (statusLabel.innerHTML.includes("CONCEDIDO")) {
-                        encontrado = true;
-                        clearInterval(intervaloTimer);
-                        document.body.classList.add('found-screen');
-                        counterDisplay.innerText = totalSenhas.toLocaleString();
-                        alert(`SUCESSO!\nSENHA: ${senha}`);
-                        return;
-                    }
-
-                    // Incremento
-                    let p = tamanhoAtual - 1;
-                    while (p >= 0) {
-                        indices[p]++;
-                        if (indices[p] < charset.length) break;
-                        indices[p] = 0;
-                        p--;
-                    }
-
-                    if (p < 0) {
-                        tamanhoAtual++;
-                        indices = new Array(tamanhoAtual).fill(0);
-                        log(`Nível: ${tamanhoAtual} dígitos`);
-                        break; 
-                    }
-                }
-
-                // Atualização visual inteligente (menos frequente)
-                lotesSemLog++;
-                if (lotesSemLog >= 10) {
-                    counterDisplay.innerText = totalSenhas.toLocaleString();
-                    let atualStr = "";
-                    for(let j=0; j<tamanhoAtual; j++) atualStr += charset[indices[j]];
-                    log(`Testando: ${atualStr}`);
-                    lotesSemLog = 0;
-                }
-                
-                setTimeout(rodarBloco, 1);
-            };
-
-            rodarBloco();
-        }
-    </script>
+  <!-- Three.js + loaders via CDN (r170) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
