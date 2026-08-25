@@ -37,7 +37,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = state.exposure;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1e28);
+scene.background = new THREE.Color(0x0b0f1a);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
 camera.position.set(0, 1.5, 4);
@@ -82,7 +82,7 @@ fill.position.set(-3, 2, -4);
 scene.add(fill);
 
 // Helpers
-const grid = new THREE.GridHelper(20, 40, 0x444b5a, 0x2a3140);
+const grid = new THREE.GridHelper(20, 40, 0x1e2a44, 0x141c2e);
 scene.add(grid);
 
 const axes = new THREE.AxesHelper(1.5);
@@ -91,30 +91,30 @@ scene.add(axes);
 
 let skeletonHelper = null;
 
-// ===================== BRILHO + BOTÕES EXTRA =====================
+// ===================== BRILHO =====================
 function adjustBrightness(delta) {
   state.exposure = Math.max(0.4, Math.min(3.5, state.exposure + delta));
   renderer.toneMappingExposure = state.exposure;
+
+  const label = document.getElementById('brightness-value');
+  if (label) {
+    label.textContent = Math.round(state.exposure * 100) + '%';
+  }
+
   setStatus(`Brilho: ${state.exposure.toFixed(1)}`);
 }
 
-function createExtraButtons() {
-  let toolbarRight = document.querySelector('.toolbar-right');
+function setupBrightnessButtons() {
+  document.getElementById('btn-brightness-up')?.addEventListener('click', () => {
+    adjustBrightness(0.25);
+  });
+  document.getElementById('btn-brightness-down')?.addEventListener('click', () => {
+    adjustBrightness(-0.25);
+  });
+}
 
-  if (!toolbarRight) {
-    toolbarRight = document.querySelector('.toolbar') || document.body;
-    console.warn('Elemento .toolbar-right não encontrado. Usando fallback.');
-  }
-
-  // Evita duplicar
-  if (document.getElementById('btn-brightness-up')) return;
-
-  // Botão Personagem
-  const btnChar = document.createElement('button');
-  btnChar.id = 'btn-select-character';
-  btnChar.className = 'btn';
-  btnChar.textContent = 'Personagem';
-  btnChar.addEventListener('click', () => {
+function setupCharacterButton() {
+  document.getElementById('btn-select-character')?.addEventListener('click', () => {
     if (state.character) {
       selectObject(state.character);
       setStatus('Personagem selecionado');
@@ -122,32 +122,6 @@ function createExtraButtons() {
       alert('Nenhum personagem carregado.');
     }
   });
-
-  // Botão Brilho -
-  const btnDown = document.createElement('button');
-  btnDown.id = 'btn-brightness-down';
-  btnDown.className = 'btn';
-  btnDown.textContent = 'Brilho -';
-  btnDown.title = 'Diminuir brilho';
-  btnDown.addEventListener('click', () => adjustBrightness(-0.25));
-
-  // Botão Brilho +
-  const btnUp = document.createElement('button');
-  btnUp.id = 'btn-brightness-up';
-  btnUp.className = 'btn';
-  btnUp.textContent = 'Brilho +';
-  btnUp.title = 'Aumentar brilho';
-  btnUp.addEventListener('click', () => adjustBrightness(0.25));
-
-  if (toolbarRight.firstChild) {
-    toolbarRight.insertBefore(btnUp, toolbarRight.firstChild);
-    toolbarRight.insertBefore(btnDown, toolbarRight.firstChild);
-    toolbarRight.insertBefore(btnChar, toolbarRight.firstChild);
-  } else {
-    toolbarRight.appendChild(btnChar);
-    toolbarRight.appendChild(btnDown);
-    toolbarRight.appendChild(btnUp);
-  }
 }
 
 // ===================== LOADERS =====================
@@ -302,7 +276,7 @@ async function importObject(file) {
   }
 }
 
-// ===================== ATTACH / DETACH (CORRIGIDO) =====================
+// ===================== ATTACH / DETACH =====================
 function attachToBone() {
   if (!state.selectedObject) {
     alert('Selecione um objeto primeiro.');
@@ -436,7 +410,7 @@ function buildBonesList() {
     li.dataset.uuid = bone.uuid;
     li.style.padding = '12px 10px';
     li.style.fontSize = '14px';
-    li.style.borderBottom = '1px solid #2a3140';
+    li.style.borderBottom = '1px solid #1e2a44';
     li.style.cursor = 'pointer';
 
     li.addEventListener('click', (e) => {
@@ -490,7 +464,9 @@ function updatePropertiesPanel() {
   const currentSize = Math.round(((obj.scale.x + obj.scale.y + obj.scale.z) / 3) * 100);
   const pos = obj.position;
   const rot = obj.rotation;
-  const parentName = obj.parent && obj.parent.isBone ? obj.parent.name : (obj.parent === scene ? 'Scene' : (obj.parent?.name || '—'));
+  const parentName = obj.parent && obj.parent.isBone
+    ? obj.parent.name
+    : (obj.parent === scene ? 'Scene' : (obj.parent?.name || '—'));
 
   container.innerHTML = `
     <div class="prop-row"><label>Nome</label><input type="text" id="prop-name" value="${obj.name}" /></div>
@@ -832,6 +808,15 @@ document.getElementById('search-bones')?.addEventListener('input', (e) => {
   });
 });
 
+// Busca de hierarquia
+document.getElementById('search-hierarchy')?.addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  document.querySelectorAll('#hierarchy-list li').forEach(li => {
+    const text = li.textContent.toLowerCase();
+    li.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+});
+
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.key === 'w' || e.key === 'W') setMode('translate');
@@ -886,6 +871,7 @@ function animate() {
 }
 animate();
 
-// Criar botões extras depois que a página carregou
-createExtraButtons();
+// ===================== INIT =====================
+setupBrightnessButtons();
+setupCharacterButton();
 setStatus('Pronto — Importe um personagem para começar');
