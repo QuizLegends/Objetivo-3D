@@ -22,7 +22,6 @@ const state = {
   showSkeleton: false,
   showAxes: true,
   space: 'local',
-  brightness: 1.0, // 0.3 ~ 2.5
 };
 
 // ===================== SCENE SETUP =====================
@@ -34,10 +33,11 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.4;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1e28);
+// scene.fog = new THREE.Fog(0x0a0c10, 20, 60);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
 camera.position.set(0, 1.5, 4);
@@ -61,11 +61,11 @@ transformControls.addEventListener('objectChange', () => {
   updatePropertiesPanel();
 });
 
-// Lights (valores base)
-const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+// Lights (mais claras)
+const ambient = new THREE.AmbientLight(0xffffff, 1.1);
 scene.add(ambient);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
+const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
 dirLight.position.set(4, 8, 5);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(2048, 2048);
@@ -77,7 +77,7 @@ dirLight.shadow.camera.top = 8;
 dirLight.shadow.camera.bottom = -8;
 scene.add(dirLight);
 
-const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+const fill = new THREE.DirectionalLight(0xffffff, 0.8);
 fill.position.set(-3, 2, -4);
 scene.add(fill);
 
@@ -90,23 +90,6 @@ axes.position.y = 0.01;
 scene.add(axes);
 
 let skeletonHelper = null;
-
-// ===================== BRIGHTNESS =====================
-function applyBrightness() {
-  const b = state.brightness;
-  ambient.intensity = 0.9 * b;
-  dirLight.intensity = 1.6 * b;
-  fill.intensity = 0.6 * b;
-  renderer.toneMappingExposure = 1.0 + (b - 1.0) * 0.6;
-
-  const percent = Math.round(b * 100);
-  document.getElementById('brightness-value').textContent = percent + '%';
-}
-
-function changeBrightness(delta) {
-  state.brightness = Math.min(2.5, Math.max(0.3, state.brightness + delta));
-  applyBrightness();
-}
 
 // ===================== LOADERS =====================
 const gltfLoader = new GLTFLoader();
@@ -402,14 +385,25 @@ function updatePropertiesPanel() {
     return;
   }
 
+  // Calcula o tamanho atual (média da escala * 100)
+  const currentSize = Math.round(((obj.scale.x + obj.scale.y + obj.scale.z) / 3) * 100);
+
   const pos = obj.position;
   const rot = obj.rotation;
-  const scl = obj.scale;
   const parentName = obj.parent && obj.parent.isBone ? obj.parent.name : (obj.parent === scene ? 'Scene' : (obj.parent?.name || '—'));
 
   container.innerHTML = `
     <div class="prop-row"><label>Nome</label><input type="text" id="prop-name" value="${obj.name}" /></div>
     <div class="prop-row"><label>Parent</label><input type="text" value="${parentName}" readonly /></div>
+
+    <div class="prop-row" style="margin-top:12px;">
+      <label style="width:70px;">Tamanho</label>
+      <input type="number" id="prop-size" value="${currentSize}" step="5" min="1" max="500" style="flex:1; font-size:16px; padding:8px;" />
+    </div>
+    <p class="muted" style="margin:4px 0 10px 0; font-size:11px;">
+      100 = tamanho original &nbsp;|&nbsp; 50 = metade &nbsp;|&nbsp; 30 = pequeno
+    </p>
+
     <div class="prop-row">
       <label>Posição</label>
       <div class="vec3">
@@ -421,22 +415,15 @@ function updatePropertiesPanel() {
     <div class="prop-row">
       <label>Rotação</label>
       <div class="vec3">
-        <input type="number" step="0.01" id="prop-rx" value="${THREE.MathUtils.radToDeg(rot.x).toFixed(1)}" />
-        <input type="number" step="0.01" id="prop-ry" value="${THREE.MathUtils.radToDeg(rot.y).toFixed(1)}" />
-        <input type="number" step="0.01" id="prop-rz" value="${THREE.MathUtils.radToDeg(rot.z).toFixed(1)}" />
+        <input type="number" step="1" id="prop-rx" value="${THREE.MathUtils.radToDeg(rot.x).toFixed(0)}" />
+        <input type="number" step="1" id="prop-ry" value="${THREE.MathUtils.radToDeg(rot.y).toFixed(0)}" />
+        <input type="number" step="1" id="prop-rz" value="${THREE.MathUtils.radToDeg(rot.z).toFixed(0)}" />
       </div>
     </div>
-    <div class="prop-row">
-      <label>Escala</label>
-      <div class="vec3">
-        <input type="number" step="0.01" id="prop-sx" value="${scl.x.toFixed(3)}" />
-        <input type="number" step="0.01" id="prop-sy" value="${scl.y.toFixed(3)}" />
-        <input type="number" step="0.01" id="prop-sz" value="${scl.z.toFixed(3)}" />
-      </div>
-    </div>
-    <div style="margin-top:10px; display:flex; gap:6px;">
-      <button class="btn small" id="btn-apply-props">Aplicar</button>
-      <button class="btn small" id="btn-reset-props">Resetar</button>
+
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button class="btn small" id="btn-apply-props" style="flex:1; padding:10px;">Aplicar</button>
+      <button class="btn small" id="btn-reset-props" style="padding:10px;">Resetar</button>
     </div>
   `;
 
@@ -448,30 +435,38 @@ function updatePropertiesPanel() {
     updatePropertiesPanel();
   });
 
-  ['px','py','pz','rx','ry','rz','sx','sy','sz'].forEach(id => {
-    const el = document.getElementById('prop-' + id);
-    if (el) el.addEventListener('change', applyProperties);
-  });
+  // Aplica automaticamente quando mudar o tamanho
+  document.getElementById('prop-size')?.addEventListener('change', applyProperties);
+  document.getElementById('prop-size')?.addEventListener('input', applyProperties);
 }
 
 function applyProperties() {
   const obj = state.selectedObject;
   if (!obj) return;
 
-  const px = parseFloat(document.getElementById('prop-px').value) || 0;
-  const py = parseFloat(document.getElementById('prop-py').value) || 0;
-  const pz = parseFloat(document.getElementById('prop-pz').value) || 0;
-  const rx = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rx').value) || 0);
-  const ry = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-ry').value) || 0);
-  const rz = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rz').value) || 0);
-  const sx = parseFloat(document.getElementById('prop-sx').value) || 1;
-  const sy = parseFloat(document.getElementById('prop-sy').value) || 1;
-  const sz = parseFloat(document.getElementById('prop-sz').value) || 1;
+  // Tamanho (100 = original)
+  const sizeInput = document.getElementById('prop-size');
+  if (sizeInput) {
+    let size = parseFloat(sizeInput.value) || 100;
+    if (size < 1) size = 1;
+    if (size > 500) size = 500;
+    const scale = size / 100;
+    obj.scale.set(scale, scale, scale);
+  }
 
+  // Posição
+  const px = parseFloat(document.getElementById('prop-px')?.value) || 0;
+  const py = parseFloat(document.getElementById('prop-py')?.value) || 0;
+  const pz = parseFloat(document.getElementById('prop-pz')?.value) || 0;
   obj.position.set(px, py, pz);
-  obj.rotation.set(rx, ry, rz);
-  obj.scale.set(sx, sy, sz);
 
+  // Rotação
+  const rx = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rx')?.value) || 0);
+  const ry = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-ry')?.value) || 0);
+  const rz = THREE.MathUtils.degToRad(parseFloat(document.getElementById('prop-rz')?.value) || 0);
+  obj.rotation.set(rx, ry, rz);
+
+  // Nome
   const nameEl = document.getElementById('prop-name');
   if (nameEl && nameEl.value) {
     obj.name = nameEl.value;
@@ -633,10 +628,6 @@ document.getElementById('btn-new').addEventListener('click', () => {
   if (confirm('Limpar cena atual?')) clearScene();
 });
 
-// Brightness buttons
-document.getElementById('btn-brightness-up').addEventListener('click', () => changeBrightness(0.15));
-document.getElementById('btn-brightness-down').addEventListener('click', () => changeBrightness(-0.15));
-
 document.getElementById('mode-translate').addEventListener('click', () => setMode('translate'));
 document.getElementById('mode-rotate').addEventListener('click', () => setMode('rotate'));
 document.getElementById('mode-scale').addEventListener('click', () => setMode('scale'));
@@ -746,8 +737,6 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'e' || e.key === 'E') setMode('rotate');
   if (e.key === 'r' || e.key === 'R') setMode('scale');
   if (e.key === 'f' || e.key === 'F') focusObject(state.selectedObject || state.character);
-  if (e.key === '+' || e.key === '=') changeBrightness(0.15);
-  if (e.key === '-' || e.key === '_') changeBrightness(-0.15);
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (state.selectedObject && state.objects.some(o => o.root === state.selectedObject)) {
       const obj = state.selectedObject;
@@ -805,6 +794,4 @@ function animate() {
 }
 animate();
 
-// Inicializa brilho
-applyBrightness();
 setStatus('Pronto — Importe um personagem para começar');
