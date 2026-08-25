@@ -22,6 +22,7 @@ const state = {
   showSkeleton: false,
   showAxes: true,
   space: 'local',
+  brightness: 1.0, // 0.3 ~ 2.5
 };
 
 // ===================== SCENE SETUP =====================
@@ -33,11 +34,10 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 1.2;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0c10);
-scene.fog = new THREE.Fog(0x0a0c10, 20, 60);
+scene.background = new THREE.Color(0x1a1e28);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
 camera.position.set(0, 1.5, 4);
@@ -61,11 +61,11 @@ transformControls.addEventListener('objectChange', () => {
   updatePropertiesPanel();
 });
 
-// Lights
-const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+// Lights (valores base)
+const ambient = new THREE.AmbientLight(0xffffff, 0.9);
 scene.add(ambient);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
 dirLight.position.set(4, 8, 5);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(2048, 2048);
@@ -77,12 +77,12 @@ dirLight.shadow.camera.top = 8;
 dirLight.shadow.camera.bottom = -8;
 scene.add(dirLight);
 
-const fill = new THREE.DirectionalLight(0x88aaff, 0.35);
+const fill = new THREE.DirectionalLight(0xffffff, 0.6);
 fill.position.set(-3, 2, -4);
 scene.add(fill);
 
 // Helpers
-const grid = new THREE.GridHelper(20, 40, 0x333844, 0x222630);
+const grid = new THREE.GridHelper(20, 40, 0x444b5a, 0x2a3140);
 scene.add(grid);
 
 const axes = new THREE.AxesHelper(1.5);
@@ -90,6 +90,23 @@ axes.position.y = 0.01;
 scene.add(axes);
 
 let skeletonHelper = null;
+
+// ===================== BRIGHTNESS =====================
+function applyBrightness() {
+  const b = state.brightness;
+  ambient.intensity = 0.9 * b;
+  dirLight.intensity = 1.6 * b;
+  fill.intensity = 0.6 * b;
+  renderer.toneMappingExposure = 1.0 + (b - 1.0) * 0.6;
+
+  const percent = Math.round(b * 100);
+  document.getElementById('brightness-value').textContent = percent + '%';
+}
+
+function changeBrightness(delta) {
+  state.brightness = Math.min(2.5, Math.max(0.3, state.brightness + delta));
+  applyBrightness();
+}
 
 // ===================== LOADERS =====================
 const gltfLoader = new GLTFLoader();
@@ -616,6 +633,10 @@ document.getElementById('btn-new').addEventListener('click', () => {
   if (confirm('Limpar cena atual?')) clearScene();
 });
 
+// Brightness buttons
+document.getElementById('btn-brightness-up').addEventListener('click', () => changeBrightness(0.15));
+document.getElementById('btn-brightness-down').addEventListener('click', () => changeBrightness(-0.15));
+
 document.getElementById('mode-translate').addEventListener('click', () => setMode('translate'));
 document.getElementById('mode-rotate').addEventListener('click', () => setMode('rotate'));
 document.getElementById('mode-scale').addEventListener('click', () => setMode('scale'));
@@ -725,6 +746,8 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'e' || e.key === 'E') setMode('rotate');
   if (e.key === 'r' || e.key === 'R') setMode('scale');
   if (e.key === 'f' || e.key === 'F') focusObject(state.selectedObject || state.character);
+  if (e.key === '+' || e.key === '=') changeBrightness(0.15);
+  if (e.key === '-' || e.key === '_') changeBrightness(-0.15);
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (state.selectedObject && state.objects.some(o => o.root === state.selectedObject)) {
       const obj = state.selectedObject;
@@ -782,4 +805,6 @@ function animate() {
 }
 animate();
 
+// Inicializa brilho
+applyBrightness();
 setStatus('Pronto — Importe um personagem para começar');
