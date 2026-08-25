@@ -62,10 +62,10 @@ transformControls.addEventListener('objectChange', () => {
 });
 
 // Lights
-const ambient = new THREE.AmbientLight(0xffffff, 1.1);
+const ambient = new THREE.AmbientLight(0xffffff, 1.2);
 scene.add(ambient);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
 dirLight.position.set(4, 8, 5);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(2048, 2048);
@@ -77,7 +77,7 @@ dirLight.shadow.camera.top = 8;
 dirLight.shadow.camera.bottom = -8;
 scene.add(dirLight);
 
-const fill = new THREE.DirectionalLight(0xffffff, 0.8);
+const fill = new THREE.DirectionalLight(0xffffff, 0.9);
 fill.position.set(-3, 2, -4);
 scene.add(fill);
 
@@ -91,60 +91,60 @@ scene.add(axes);
 
 let skeletonHelper = null;
 
-// ===================== EXTRA BUTTONS (Brilho + Personagem) =====================
-function createExtraButtons() {
-  // Botão Selecionar Personagem na toolbar
-  const toolbarRight = document.querySelector('.toolbar-right');
-  if (toolbarRight && !document.getElementById('btn-select-character')) {
-    const btnChar = document.createElement('button');
-    btnChar.id = 'btn-select-character';
-    btnChar.className = 'btn';
-    btnChar.textContent = 'Personagem';
-    btnChar.title = 'Selecionar o personagem';
-    btnChar.addEventListener('click', () => {
-      if (state.character) {
-        selectObject(state.character);
-        setStatus('Personagem selecionado');
-      } else {
-        alert('Nenhum personagem carregado.');
-      }
-    });
-    toolbarRight.insertBefore(btnChar, toolbarRight.firstChild);
-  }
-
-  // Botões de Brilho no viewport
-  const viewportControls = document.getElementById('viewport-controls');
-  if (viewportControls && !document.getElementById('btn-brightness-up')) {
-    const btnDown = document.createElement('button');
-    btnDown.id = 'btn-brightness-down';
-    btnDown.className = 'btn-icon';
-    btnDown.title = 'Diminuir brilho';
-    btnDown.textContent = '🌑';
-    btnDown.addEventListener('click', () => adjustBrightness(-0.2));
-
-    const btnUp = document.createElement('button');
-    btnUp.id = 'btn-brightness-up';
-    btnUp.className = 'btn-icon';
-    btnUp.title = 'Aumentar brilho';
-    btnUp.textContent = '☀️';
-    btnUp.addEventListener('click', () => adjustBrightness(0.2));
-
-    viewportControls.appendChild(btnDown);
-    viewportControls.appendChild(btnUp);
-  }
-}
-
+// ===================== BRILHO + BOTÕES EXTRA =====================
 function adjustBrightness(delta) {
-  state.exposure = Math.max(0.3, Math.min(3.5, state.exposure + delta));
+  state.exposure = Math.max(0.4, Math.min(3.5, state.exposure + delta));
   renderer.toneMappingExposure = state.exposure;
   setStatus(`Brilho: ${state.exposure.toFixed(1)}`);
+}
+
+function createExtraButtons() {
+  const toolbarRight = document.querySelector('.toolbar-right');
+  if (!toolbarRight) return;
+
+  // Evita duplicar
+  if (document.getElementById('btn-brightness-up')) return;
+
+  // Botão Personagem
+  const btnChar = document.createElement('button');
+  btnChar.id = 'btn-select-character';
+  btnChar.className = 'btn';
+  btnChar.textContent = 'Personagem';
+  btnChar.addEventListener('click', () => {
+    if (state.character) {
+      selectObject(state.character);
+      setStatus('Personagem selecionado');
+    } else {
+      alert('Nenhum personagem carregado.');
+    }
+  });
+
+  // Botão Brilho -
+  const btnDown = document.createElement('button');
+  btnDown.id = 'btn-brightness-down';
+  btnDown.className = 'btn';
+  btnDown.textContent = 'Brilho -';
+  btnDown.title = 'Diminuir brilho';
+  btnDown.addEventListener('click', () => adjustBrightness(-0.25));
+
+  // Botão Brilho +
+  const btnUp = document.createElement('button');
+  btnUp.id = 'btn-brightness-up';
+  btnUp.className = 'btn';
+  btnUp.textContent = 'Brilho +';
+  btnUp.title = 'Aumentar brilho';
+  btnUp.addEventListener('click', () => adjustBrightness(0.25));
+
+  toolbarRight.insertBefore(btnUp, toolbarRight.firstChild);
+  toolbarRight.insertBefore(btnDown, toolbarRight.firstChild);
+  toolbarRight.insertBefore(btnChar, toolbarRight.firstChild);
 }
 
 // ===================== LOADERS =====================
 const gltfLoader = new GLTFLoader();
 const fbxLoader = new FBXLoader();
 
-function loadModel(file, isCharacter = false) {
+function loadModel(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const ext = file.name.split('.').pop().toLowerCase();
@@ -177,13 +177,33 @@ function loadModel(file, isCharacter = false) {
   });
 }
 
+// ===================== DETECTAR OSSOS (MELHORADO) =====================
+function detectBones(root) {
+  const bonesMap = new Map();
+
+  root.traverse((c) => {
+    // SkinnedMesh com skeleton
+    if (c.isSkinnedMesh && c.skeleton && c.skeleton.bones) {
+      c.skeleton.bones.forEach((bone) => {
+        if (bone && bone.name) bonesMap.set(bone.uuid, bone);
+      });
+    }
+    // Bones diretos
+    if (c.isBone && c.name) {
+      bonesMap.set(c.uuid, c);
+    }
+  });
+
+  return Array.from(bonesMap.values());
+}
+
 // ===================== CHARACTER =====================
 async function importCharacter(file) {
   setStatus('Carregando personagem...');
   try {
-    const root = await loadModel(file, true);
+    const root = await loadModel(file);
 
-    clearScene(true);
+    clearScene();
 
     const box = new THREE.Box3().setFromObject(root);
     const size = box.getSize(new THREE.Vector3());
@@ -201,27 +221,29 @@ async function importCharacter(file) {
     scene.add(root);
     state.character = root;
 
-    let foundSkeleton = null;
-    root.traverse((c) => {
-      if (c.isSkinnedMesh && c.skeleton) {
-        foundSkeleton = c.skeleton;
-      }
-    });
+    // Detectar ossos
+    state.bones = detectBones(root);
 
-    if (foundSkeleton) {
-      state.skeleton = foundSkeleton;
-      state.bones = foundSkeleton.bones.slice();
+    if (state.bones.length > 0) {
+      // Pegar skeleton de qualquer skinned mesh
+      root.traverse((c) => {
+        if (c.isSkinnedMesh && c.skeleton) {
+          state.skeleton = c.skeleton;
+        }
+      });
+
       skeletonHelper = new SkeletonHelper(root);
       skeletonHelper.visible = state.showSkeleton;
       scene.add(skeletonHelper);
-      setStatus(`Personagem carregado • ${state.bones.length} ossos detectados`);
+
+      setStatus(`Personagem carregado • ${state.bones.length} ossos encontrados`);
     } else {
       state.skeleton = null;
-      state.bones = [];
-      setStatus('Personagem carregado (sem esqueleto detectável)');
-      alert('Este personagem não possui um esqueleto detectável.\nVocê ainda pode visualizar, mas não poderá anexar objetos a ossos.');
+      setStatus('Personagem carregado (nenhum osso detectado)');
+      alert('Nenhum osso foi detectado neste personagem.\nTente um modelo com esqueleto (ex: Mixamo).');
     }
 
+    // Animações
     if (root.animations && root.animations.length > 0) {
       state.mixer = new THREE.AnimationMixer(root);
       state.actions = {};
@@ -249,7 +271,7 @@ async function importCharacter(file) {
 async function importObject(file) {
   setStatus('Carregando objeto...');
   try {
-    const root = await loadModel(file, false);
+    const root = await loadModel(file);
 
     const box = new THREE.Box3().setFromObject(root);
     const center = box.getCenter(new THREE.Vector3());
@@ -282,7 +304,7 @@ function attachToBone() {
     return;
   }
   if (!state.selectedBone) {
-    alert('Selecione um osso primeiro.\nVá na aba Ossos e clique no osso desejado.');
+    alert('Selecione um osso primeiro.\nAbra a aba "Ossos" e toque no osso desejado.');
     return;
   }
 
@@ -319,7 +341,6 @@ function detachObject() {
 // ===================== SELECTION =====================
 function selectObject(obj) {
   state.selectedObject = obj;
-  // Não limpa o osso selecionado
 
   if (obj) {
     transformControls.attach(obj);
@@ -336,12 +357,13 @@ function selectBone(bone) {
   highlightBonesList();
   highlightHierarchy();
   updatePropertiesPanel();
-  setStatus(`Osso selecionado: ${bone.name}`);
+  setStatus(`Osso: ${bone.name}`);
 }
 
-// ===================== UI BUILDERS =====================
+// ===================== UI =====================
 function buildHierarchy() {
   const list = document.getElementById('hierarchy-list');
+  if (!list) return;
   list.innerHTML = '';
 
   if (state.character) {
@@ -350,22 +372,7 @@ function buildHierarchy() {
 
     if (state.bones.length) {
       const armatureLi = document.createElement('li');
-      armatureLi.innerHTML = `<span class="toggle">▼</span> Armature`;
-      const children = document.createElement('ul');
-      children.className = 'children';
-
-      state.bones.forEach(bone => {
-        const bi = document.createElement('li');
-        bi.textContent = bone.name;
-        bi.dataset.uuid = bone.uuid;
-        bi.addEventListener('click', (e) => {
-          e.stopPropagation();
-          selectBone(bone);
-        });
-        children.appendChild(bi);
-      });
-
-      armatureLi.appendChild(children);
+      armatureLi.innerHTML = `<span class="toggle">▼</span> Armature (${state.bones.length} ossos)`;
       list.appendChild(armatureLi);
     }
   }
@@ -383,6 +390,7 @@ function createTreeItem(name, obj) {
   const li = document.createElement('li');
   li.textContent = name;
   li.dataset.uuid = obj.uuid;
+  li.style.padding = '10px 8px';
   li.addEventListener('click', (e) => {
     e.stopPropagation();
     selectObject(obj);
@@ -392,18 +400,36 @@ function createTreeItem(name, obj) {
 
 function buildBonesList() {
   const list = document.getElementById('bones-list');
+  if (!list) return;
   list.innerHTML = '';
 
   if (!state.bones.length) {
-    list.innerHTML = '<li class="muted">Nenhum osso</li>';
+    list.innerHTML = '<li class="muted" style="padding:12px 8px;">Nenhum osso detectado.<br>Importe um personagem com esqueleto (Mixamo, etc).</li>';
     return;
   }
 
-  state.bones.forEach(bone => {
+  // Ordenar por nome para facilitar
+  const sorted = [...state.bones].sort((a, b) => a.name.localeCompare(b.name));
+
+  sorted.forEach(bone => {
     const li = document.createElement('li');
     li.textContent = bone.name;
     li.dataset.uuid = bone.uuid;
-    li.addEventListener('click', () => selectBone(bone));
+    li.style.padding = '12px 10px';
+    li.style.fontSize = '14px';
+    li.style.borderBottom = '1px solid #2a3140';
+    li.style.cursor = 'pointer';
+
+    li.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      selectBone(bone);
+
+      // Feedback visual imediato
+      document.querySelectorAll('#bones-list li').forEach(el => el.classList.remove('selected'));
+      li.classList.add('selected');
+    });
+
     list.appendChild(li);
   });
 }
@@ -425,6 +451,8 @@ function highlightBonesList() {
 
 function updatePropertiesPanel() {
   const container = document.getElementById('properties-content');
+  if (!container) return;
+
   const obj = state.selectedObject;
   const bone = state.selectedBone;
 
@@ -435,8 +463,8 @@ function updatePropertiesPanel() {
 
   if (bone && !obj) {
     container.innerHTML = `
-      <div class="prop-row"><label>Nome</label><input type="text" value="${bone.name}" readonly /></div>
-      <p class="muted" style="margin-top:8px">Osso selecionado. Agora selecione um objeto e clique em "Anexar ao Osso".</p>
+      <div class="prop-row"><label>Osso</label><input type="text" value="${bone.name}" readonly /></div>
+      <p class="muted" style="margin-top:10px">Osso selecionado.<br>Agora selecione a arma e clique em <b>Anexar ao Osso</b>.</p>
     `;
     return;
   }
@@ -452,10 +480,10 @@ function updatePropertiesPanel() {
 
     <div class="prop-row" style="margin-top:12px;">
       <label style="width:70px;">Tamanho</label>
-      <input type="number" id="prop-size" value="${currentSize}" step="5" min="1" max="500" style="flex:1; font-size:16px; padding:8px;" />
+      <input type="number" id="prop-size" value="${currentSize}" step="5" min="1" max="500" style="flex:1; font-size:16px; padding:10px;" />
     </div>
     <p class="muted" style="margin:4px 0 10px 0; font-size:11px;">
-      100 = original &nbsp;|&nbsp; 50 = metade &nbsp;|&nbsp; 30 = pequeno
+      100 = original | 50 = metade | 30 = pequeno
     </p>
 
     <div class="prop-row">
@@ -476,8 +504,8 @@ function updatePropertiesPanel() {
     </div>
 
     <div style="margin-top:12px; display:flex; gap:8px;">
-      <button class="btn small" id="btn-apply-props" style="flex:1; padding:10px;">Aplicar</button>
-      <button class="btn small" id="btn-reset-props" style="padding:10px;">Resetar</button>
+      <button class="btn small" id="btn-apply-props" style="flex:1; padding:12px;">Aplicar</button>
+      <button class="btn small" id="btn-reset-props" style="padding:12px;">Resetar</button>
     </div>
   `;
 
@@ -500,8 +528,7 @@ function applyProperties() {
   const sizeInput = document.getElementById('prop-size');
   if (sizeInput) {
     let size = parseFloat(sizeInput.value) || 100;
-    if (size < 1) size = 1;
-    if (size > 500) size = 500;
+    size = Math.max(1, Math.min(500, size));
     const scale = size / 100;
     obj.scale.set(scale, scale, scale);
   }
@@ -528,6 +555,7 @@ function applyProperties() {
 function buildAnimationsPanel() {
   const container = document.getElementById('animations-content');
   const controlsEl = document.getElementById('anim-controls');
+  if (!container || !controlsEl) return;
 
   const names = Object.keys(state.actions);
   if (!names.length) {
@@ -541,6 +569,7 @@ function buildAnimationsPanel() {
     const div = document.createElement('div');
     div.className = 'anim-item';
     div.textContent = name;
+    div.style.padding = '10px 8px';
     div.addEventListener('click', () => playAnimation(name));
     container.appendChild(div);
   });
@@ -617,7 +646,8 @@ function focusObject(obj) {
 }
 
 function setStatus(msg) {
-  document.getElementById('status').textContent = msg;
+  const el = document.getElementById('status');
+  if (el) el.textContent = msg;
 }
 
 // ===================== EXPORT =====================
@@ -654,84 +684,84 @@ function exportGLB() {
 }
 
 // ===================== EVENTS =====================
-document.getElementById('btn-import-character').addEventListener('click', () => {
+document.getElementById('btn-import-character')?.addEventListener('click', () => {
   document.getElementById('file-character').click();
 });
-document.getElementById('file-character').addEventListener('change', (e) => {
+document.getElementById('file-character')?.addEventListener('change', (e) => {
   if (e.target.files[0]) importCharacter(e.target.files[0]);
   e.target.value = '';
 });
 
-document.getElementById('btn-import-object').addEventListener('click', () => {
+document.getElementById('btn-import-object')?.addEventListener('click', () => {
   document.getElementById('file-object').click();
 });
-document.getElementById('file-object').addEventListener('change', (e) => {
+document.getElementById('file-object')?.addEventListener('change', (e) => {
   if (e.target.files[0]) importObject(e.target.files[0]);
   e.target.value = '';
 });
 
-document.getElementById('btn-attach').addEventListener('click', attachToBone);
-document.getElementById('btn-detach').addEventListener('click', detachObject);
-document.getElementById('btn-export').addEventListener('click', exportGLB);
-document.getElementById('btn-new').addEventListener('click', () => {
+document.getElementById('btn-attach')?.addEventListener('click', attachToBone);
+document.getElementById('btn-detach')?.addEventListener('click', detachObject);
+document.getElementById('btn-export')?.addEventListener('click', exportGLB);
+document.getElementById('btn-new')?.addEventListener('click', () => {
   if (confirm('Limpar cena atual?')) clearScene();
 });
 
-document.getElementById('mode-translate').addEventListener('click', () => setMode('translate'));
-document.getElementById('mode-rotate').addEventListener('click', () => setMode('rotate'));
-document.getElementById('mode-scale').addEventListener('click', () => setMode('scale'));
+document.getElementById('mode-translate')?.addEventListener('click', () => setMode('translate'));
+document.getElementById('mode-rotate')?.addEventListener('click', () => setMode('rotate'));
+document.getElementById('mode-scale')?.addEventListener('click', () => setMode('scale'));
 
 function setMode(mode) {
   transformControls.setMode(mode);
   document.querySelectorAll('.transform-modes .btn-icon').forEach(b => b.classList.remove('active'));
-  document.getElementById('mode-' + mode).classList.add('active');
+  document.getElementById('mode-' + mode)?.classList.add('active');
 }
 
-document.getElementById('btn-space').addEventListener('click', () => {
+document.getElementById('btn-space')?.addEventListener('click', () => {
   state.space = state.space === 'local' ? 'world' : 'local';
   transformControls.setSpace(state.space);
   document.getElementById('btn-space').textContent = state.space === 'local' ? 'Local' : 'World';
 });
 
-document.getElementById('btn-grid').addEventListener('click', toggleGrid);
-document.getElementById('chk-grid').addEventListener('change', (e) => {
+document.getElementById('btn-grid')?.addEventListener('click', toggleGrid);
+document.getElementById('chk-grid')?.addEventListener('change', (e) => {
   state.showGrid = e.target.checked;
   grid.visible = state.showGrid;
-  document.getElementById('btn-grid').classList.toggle('active', state.showGrid);
+  document.getElementById('btn-grid')?.classList.toggle('active', state.showGrid);
 });
 function toggleGrid() {
   state.showGrid = !state.showGrid;
   grid.visible = state.showGrid;
   document.getElementById('chk-grid').checked = state.showGrid;
-  document.getElementById('btn-grid').classList.toggle('active', state.showGrid);
+  document.getElementById('btn-grid')?.classList.toggle('active', state.showGrid);
 }
 
-document.getElementById('btn-skeleton').addEventListener('click', toggleSkeleton);
-document.getElementById('chk-skeleton').addEventListener('change', (e) => {
+document.getElementById('btn-skeleton')?.addEventListener('click', toggleSkeleton);
+document.getElementById('chk-skeleton')?.addEventListener('change', (e) => {
   state.showSkeleton = e.target.checked;
   if (skeletonHelper) skeletonHelper.visible = state.showSkeleton;
-  document.getElementById('btn-skeleton').classList.toggle('active', state.showSkeleton);
+  document.getElementById('btn-skeleton')?.classList.toggle('active', state.showSkeleton);
 });
 function toggleSkeleton() {
   state.showSkeleton = !state.showSkeleton;
   if (skeletonHelper) skeletonHelper.visible = state.showSkeleton;
   document.getElementById('chk-skeleton').checked = state.showSkeleton;
-  document.getElementById('btn-skeleton').classList.toggle('active', state.showSkeleton);
+  document.getElementById('btn-skeleton')?.classList.toggle('active', state.showSkeleton);
 }
 
-document.getElementById('btn-axes').addEventListener('click', () => {
+document.getElementById('btn-axes')?.addEventListener('click', () => {
   state.showAxes = !state.showAxes;
   axes.visible = state.showAxes;
   document.getElementById('chk-axes').checked = state.showAxes;
-  document.getElementById('btn-axes').classList.toggle('active', state.showAxes);
+  document.getElementById('btn-axes')?.classList.toggle('active', state.showAxes);
 });
-document.getElementById('chk-axes').addEventListener('change', (e) => {
+document.getElementById('chk-axes')?.addEventListener('change', (e) => {
   state.showAxes = e.target.checked;
   axes.visible = state.showAxes;
-  document.getElementById('btn-axes').classList.toggle('active', state.showAxes);
+  document.getElementById('btn-axes')?.classList.toggle('active', state.showAxes);
 });
 
-document.getElementById('chk-wireframe').addEventListener('change', (e) => {
+document.getElementById('chk-wireframe')?.addEventListener('change', (e) => {
   const wire = e.target.checked;
   scene.traverse((c) => {
     if (c.isMesh && c.material) {
@@ -741,42 +771,46 @@ document.getElementById('chk-wireframe').addEventListener('change', (e) => {
   });
 });
 
-document.getElementById('btn-reset-camera').addEventListener('click', () => {
+document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
   camera.position.set(0, 1.5, 4);
   controls.target.set(0, 1, 0);
   controls.update();
 });
 
-document.getElementById('btn-focus').addEventListener('click', () => {
+document.getElementById('btn-focus')?.addEventListener('click', () => {
   focusObject(state.selectedObject || state.character);
 });
 
-document.getElementById('btn-play').addEventListener('click', () => {
+document.getElementById('btn-play')?.addEventListener('click', () => {
   if (state.currentAction) state.currentAction.paused = false;
 });
-document.getElementById('btn-pause').addEventListener('click', () => {
+document.getElementById('btn-pause')?.addEventListener('click', () => {
   if (state.currentAction) state.currentAction.paused = true;
 });
-document.getElementById('btn-stop').addEventListener('click', () => {
+document.getElementById('btn-stop')?.addEventListener('click', () => {
   if (state.currentAction) {
     state.currentAction.stop();
     state.currentAction = null;
   }
 });
 
+// Tabs
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    const target = document.getElementById('tab-' + tab.dataset.tab);
+    if (target) target.classList.add('active');
   });
 });
 
-document.getElementById('search-bones').addEventListener('input', (e) => {
-  const q = e.target.value.toLowerCase();
+// Busca de ossos
+document.getElementById('search-bones')?.addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
   document.querySelectorAll('#bones-list li').forEach(li => {
-    li.style.display = li.textContent.toLowerCase().includes(q) ? '' : 'none';
+    const text = li.textContent.toLowerCase();
+    li.style.display = (!q || text.includes(q)) ? '' : 'none';
   });
 });
 
@@ -786,29 +820,20 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'e' || e.key === 'E') setMode('rotate');
   if (e.key === 'r' || e.key === 'R') setMode('scale');
   if (e.key === 'f' || e.key === 'F') focusObject(state.selectedObject || state.character);
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (state.selectedObject && state.objects.some(o => o.root === state.selectedObject)) {
-      const obj = state.selectedObject;
-      scene.remove(obj);
-      disposeObject(obj);
-      state.objects = state.objects.filter(o => o.root !== obj);
-      selectObject(null);
-      buildHierarchy();
-    }
-  }
 });
 
-document.getElementById('toggle-left').addEventListener('click', () => {
-  document.getElementById('panel-left').classList.toggle('open');
-  document.getElementById('panel-right').classList.remove('open');
+document.getElementById('toggle-left')?.addEventListener('click', () => {
+  document.getElementById('panel-left')?.classList.toggle('open');
+  document.getElementById('panel-right')?.classList.remove('open');
 });
-document.getElementById('toggle-right').addEventListener('click', () => {
-  document.getElementById('panel-right').classList.toggle('open');
-  document.getElementById('panel-left').classList.remove('open');
+document.getElementById('toggle-right')?.addEventListener('click', () => {
+  document.getElementById('panel-right')?.classList.toggle('open');
+  document.getElementById('panel-left')?.classList.remove('open');
 });
 
 function onResize() {
   const container = document.getElementById('viewport-container');
+  if (!container) return;
   const w = container.clientWidth;
   const h = container.clientHeight;
   camera.aspect = w / h;
@@ -835,14 +860,14 @@ function animate() {
   const now = performance.now();
   if (now >= lastTime + 1000) {
     const fps = Math.round((frames * 1000) / (now - lastTime));
-    document.getElementById('fps').textContent = fps + ' FPS';
+    const fpsEl = document.getElementById('fps');
+    if (fpsEl) fpsEl.textContent = fps + ' FPS';
     frames = 0;
     lastTime = now;
   }
 }
 animate();
 
-// Criar botões extras
+// Criar botões extras depois que a página carregou
 createExtraButtons();
-
 setStatus('Pronto — Importe um personagem para começar');
