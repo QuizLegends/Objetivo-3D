@@ -1,132 +1,81 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Bone Attacher — Editor 3D</title>
-  <link rel="stylesheet" href="css/styles.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦴</text></svg>" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visualizador 3D Three.js</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      overflow: hidden;
+      background-color: #121212;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+    }
+    #canvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 10;
+    }
+    .controls {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 10;
+    }
+    button {
+      background: #1e1e1e;
+      color: #00ffcc;
+      border: 1px solid #00ffcc;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover {
+      background: #00ffcc;
+      color: #121212;
+    }
+  </style>
+
+  <!-- Import Map do Three.js -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
-  <div id="app">
-    <!-- Top Toolbar -->
-    <header id="toolbar">
-      <div class="toolbar-left">
-        <div class="logo">🦴 Bone Attacher</div>
-        <button id="btn-new" class="btn" title="Novo projeto">Novo</button>
-        <button id="btn-import-character" class="btn primary" title="Importar personagem (.glb/.gltf/.fbx)">Importar Personagem</button>
-        <button id="btn-import-object" class="btn" title="Importar objeto (.glb/.gltf/.fbx)">Importar Objeto</button>
-        <button id="btn-select-character" class="btn" title="Selecionar o personagem">Personagem</button>
-      </div>
-      <div class="toolbar-center">
-        <div class="transform-modes">
-          <button id="mode-translate" class="btn-icon active" title="Mover (W)">↔</button>
-          <button id="mode-rotate" class="btn-icon" title="Rotacionar (E)">↻</button>
-          <button id="mode-scale" class="btn-icon" title="Escalar (R)">⤢</button>
-        </div>
-        <button id="btn-space" class="btn small" title="Espaço Local/World">Local</button>
-      </div>
-      <div class="toolbar-right">
-        <button id="btn-attach" class="btn accent" title="Anexar objeto selecionado ao osso selecionado">Anexar ao Osso</button>
-        <button id="btn-detach" class="btn" title="Desanexar objeto">Desanexar</button>
-        <button id="btn-export" class="btn" title="Exportar GLB">Exportar GLB</button>
-      </div>
-    </header>
 
-    <div id="main">
-      <!-- Left Panel: Hierarchy + Bones -->
-      <aside id="panel-left" class="panel">
-        <div class="panel-tabs">
-          <button class="tab active" data-tab="hierarchy">Hierarquia</button>
-          <button class="tab" data-tab="bones">Ossos</button>
-        </div>
-        <div id="tab-hierarchy" class="tab-content active">
-          <div class="search-box">
-            <input type="text" id="search-hierarchy" placeholder="Buscar..." />
-          </div>
-          <ul id="hierarchy-list" class="tree"></ul>
-        </div>
-        <div id="tab-bones" class="tab-content">
-          <div class="search-box">
-            <input type="text" id="search-bones" placeholder="Buscar ossos..." />
-          </div>
-          <ul id="bones-list" class="list"></ul>
-        </div>
-      </aside>
+  <div id="status">Iniciando...</div>
+  <canvas id="canvas"></canvas>
 
-      <!-- Center: Viewport -->
-      <div id="viewport-container">
-        <canvas id="canvas"></canvas>
-        <div id="viewport-overlay">
-          <div id="fps" class="hud">-- FPS</div>
-          <div id="status" class="hud">Pronto</div>
-        </div>
-        <div id="viewport-controls">
-          <button id="btn-grid" class="btn-icon active" title="Grade">▦</button>
-          <button id="btn-skeleton" class="btn-icon" title="Esqueleto">🦴</button>
-          <button id="btn-axes" class="btn-icon active" title="Eixos">✚</button>
-          <button id="btn-reset-camera" class="btn-icon" title="Resetar câmera">⌂</button>
-          <button id="btn-focus" class="btn-icon" title="Focar selecionado">◎</button>
-
-          <!-- Controle de Brilho (já no HTML) -->
-          <div class="brightness-control">
-            <button id="btn-brightness-down" class="btn-icon" title="Diminuir brilho">−</button>
-            <span id="brightness-value" class="brightness-label">140%</span>
-            <button id="btn-brightness-up" class="btn-icon" title="Aumentar brilho">+</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Panel: Properties + Animation -->
-      <aside id="panel-right" class="panel">
-        <div class="panel-section">
-          <h3>Propriedades</h3>
-          <div id="properties-content">
-            <p class="muted">Nenhum objeto selecionado</p>
-          </div>
-        </div>
-        <div class="panel-section">
-          <h3>Animações</h3>
-          <div id="animations-content">
-            <p class="muted">Nenhuma animação</p>
-          </div>
-          <div id="anim-controls" class="hidden">
-            <button id="btn-play" class="btn small">▶</button>
-            <button id="btn-pause" class="btn small">⏸</button>
-            <button id="btn-stop" class="btn small">⏹</button>
-            <input type="range" id="anim-slider" min="0" max="100" value="0" />
-          </div>
-        </div>
-        <div class="panel-section">
-          <h3>Visualização</h3>
-          <label class="checkbox"><input type="checkbox" id="chk-grid" checked /> Grade</label>
-          <label class="checkbox"><input type="checkbox" id="chk-skeleton" /> Esqueleto</label>
-          <label class="checkbox"><input type="checkbox" id="chk-axes" checked /> Eixos</label>
-          <label class="checkbox"><input type="checkbox" id="chk-wireframe" /> Wireframe</label>
-        </div>
-      </aside>
-    </div>
-
-    <!-- Mobile toggle buttons -->
-    <div id="mobile-toggles">
-      <button id="toggle-left" class="btn-icon">☰</button>
-      <button id="toggle-right" class="btn-icon">⚙</button>
-    </div>
+  <div class="controls">
+    <button id="btn-brightness-up">Aumentar Brilho</button>
+    <button id="btn-brightness-down">Diminuir Brilho</button>
+    <button id="btn-character">Importar Personagem</button>
   </div>
 
-  <!-- Hidden file inputs -->
-  <input type="file" id="file-character" accept=".glb,.gltf,.fbx" hidden />
-  <input type="file" id="file-object" accept=".glb,.gltf,.fbx" hidden />
-
-  <!-- Three.js + loaders via CDN (r170) -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-    }
-  }
-  </script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
