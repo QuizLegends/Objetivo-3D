@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -10,6 +11,7 @@ export class ThreeManager {
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
+  private transformControls: TransformControls;
   private dirLight: THREE.DirectionalLight;
   private ambLight: THREE.AmbientLight;
 
@@ -18,10 +20,12 @@ export class ThreeManager {
   private currentAction: THREE.AnimationAction | null = null;
 
   private characterModel: THREE.Object3D | null = null;
-  private skeleton: THREE.Skeleton | null = null;
   private currentProp: THREE.Object3D | null = null;
   
   private characterAnimations: THREE.AnimationClip[] = [];
+  private raycaster: THREE.Raycaster;
+  private mouse: THREE.Vector2;
+  private isTouchDragging: boolean = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -47,6 +51,26 @@ export class ThreeManager {
     this.controls.enableDamping = true;
     this.controls.target.set(0, 1, 0);
 
+    // Controles de Transformação por Toque/Gestos (TransformControls)
+    this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
+    this.transformControls.setMode('translate'); // Modo padrão: translação/movimento
+    this.transformControls.setSize(0.85); // Tamanho dos eixos na tela (otimizado para mobile)
+    
+    // Desativa a rotação de câmera quando o usuário arrasta o objeto
+    this.transformControls.addEventListener('dragging-changed', (event) => {
+      this.controls.enabled = !event.value;
+      this.isTouchDragging = event.value;
+    });
+
+    this.scene.add(this.transformControls);
+
+    // Raycaster para seleção por toque/clique
+    this.raycaster = new THREE.Raycaster();
+    this.mouse = new THREE.Vector2();
+
+    // Eventos de toque para selecionar objetos diretamente na cena
+    this.renderer.domElement.addEventListener('pointerdown', this.onPointerDown);
+
     // Iluminação
     this.ambLight = new THREE.AmbientLight(0xffffff, 1.0);
     this.scene.add(this.ambLight);
@@ -64,7 +88,40 @@ export class ThreeManager {
     this.animate();
   }
 
-  // Loop de Renderização & Atualização das Animações
+  // Raycast para selecionar objeto via toque na tela
+  private onPointerDown = (event: PointerEvent) => {
+    if (this.isTouchDragging || !this.currentProp) return;
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    const intersects = this.raycaster.intersectObject(this.currentProp, true);
+
+    if (intersects.length > 0) {
+      this.selectProp();
+    }
+  };
+
+  // Selecionar/Anexar gizmo ao objeto
+  public selectProp() {
+    if (this.currentProp) {
+      this.transformControls.attach(this.currentProp);
+    }
+  }
+
+  // Desselecionar objeto
+  public deselectProp() {
+    this.transformControls.detach();
+  }
+
+  // Alternar Modo de Manipulação por Toque ('translate' | 'rotate' | 'scale')
+  public setTransformMode(mode: 'translate' | 'rotate' | 'scale') {
+    this.transformControls.setMode(mode);
+  }
+
+  // Loop de Renderização
   private animate = () => {
     requestAnimationFrame(this.animate);
     const delta = this.clock.getDelta();
@@ -121,6 +178,7 @@ export class ThreeManager {
 
     const handlePropLoad = (prop: THREE.Object3D) => {
       this.currentProp = prop;
+      this.selectProp(); // Seleciona automaticamente ao carregar
       onLoaded(prop);
       URL.revokeObjectURL(url);
     };
@@ -134,7 +192,7 @@ export class ThreeManager {
     }
   }
 
-  // Aplicar Textura customizada no Objeto carregado
+  // Aplicar Textura customizada no Objeto
   public applyPropTexture(file: File) {
     if (!this.currentProp) return;
     const url = URL.createObjectURL(file);
@@ -167,12 +225,12 @@ export class ThreeManager {
       (targetBone as THREE.Object3D).add(prop);
       prop.position.set(0, 0, 0);
       prop.rotation.set(0, 0, 0);
+      this.selectProp();
     }
   }
 
-  // --- CONTROLES DO OBJETO ---
+  // --- CONTROLES MANUAIS VIA BOTÕES ---
 
-  // Movimentação de Posição (X, Y, Z)
   public movePropX(delta: number) {
     if (this.currentProp) this.currentProp.position.x += delta;
   }
@@ -185,7 +243,6 @@ export class ThreeManager {
     if (this.currentProp) this.currentProp.position.z += delta;
   }
 
-  // Escala (Aumentar / Diminuir como um todo)
   public scaleProp(factor: number) {
     if (this.currentProp) {
       const newScale = Math.max(0.01, this.currentProp.scale.x * factor);
@@ -193,7 +250,6 @@ export class ThreeManager {
     }
   }
 
-  // Rotação nos Eixos (graus)
   public rotateProp(axis: 'x' | 'y' | 'z', degrees: number) {
     if (!this.currentProp) return;
     const rad = THREE.MathUtils.degToRad(degrees);
@@ -202,7 +258,7 @@ export class ThreeManager {
     if (axis === 'z') this.currentProp.rotation.z += rad;
   }
 
-  // Tocar Animação
+  // Animações
   public playAnimation(clip: THREE.AnimationClip) {
     if (!this.mixer) return;
     if (this.currentAction) {
@@ -212,7 +268,6 @@ export class ThreeManager {
     this.currentAction.play();
   }
 
-  // Parar Animação
   public stopAnimation() {
     if (this.currentAction) {
       this.currentAction.stop();
@@ -220,25 +275,27 @@ export class ThreeManager {
     }
   }
 
-  // Alterar Brilho da Iluminação
+  // Configurações Globais
   public setBrightness(val: number) {
     this.dirLight.intensity = val;
     this.ambLight.intensity = val * 0.7;
   }
 
-  // Alterar Escala do Personagem
   public setCharacterScale(percent: number) {
     if (!this.characterModel) return;
     const s = percent / 100;
     this.characterModel.scale.set(s, s, s);
   }
 
-  // Exportar Modelo para arquivo .GLB
+  // Exportar GLB
   public exportGLB() {
     if (!this.characterModel) {
       alert('Nenhum modelo carregado para exportar.');
       return;
     }
+
+    // Oculta os controles de transformação antes de exportar
+    this.deselectProp();
 
     const exporter = new GLTFExporter();
     exporter.parse(
@@ -259,9 +316,13 @@ export class ThreeManager {
         link.click();
 
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+
+        // Reativa o seletor após exportação
+        this.selectProp();
       },
       (error) => {
         console.error('Erro ao exportar GLB:', error);
+        this.selectProp();
       },
       { 
         binary: true,
@@ -271,16 +332,15 @@ export class ThreeManager {
     );
   }
 
-  // Redimensionar Canvas
   public resize(width: number, height: number) {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
   }
 
-  // Limpar recursos ao desmontar componente React
   public dispose() {
     this.renderer.dispose();
+    this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
     if (this.container.contains(this.renderer.domElement)) {
       this.container.removeChild(this.renderer.domElement);
     }
