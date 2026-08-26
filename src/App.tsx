@@ -10,6 +10,8 @@ export const App: React.FC = () => {
   const [animations, setAnimations] = useState<THREE.AnimationClip[]>([]);
   const [selectedBone, setSelectedBone] = useState<string>('');
   const [currentProp, setCurrentProp] = useState<THREE.Object3D | null>(null);
+  const [isPropSelected, setIsPropSelected] = useState<boolean>(false);
+  const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
   const [brightness, setBrightness] = useState<number>(1.5);
   const [scale, setScale] = useState<number>(100);
 
@@ -49,6 +51,7 @@ export const App: React.FC = () => {
     if (file && threeManagerRef.current) {
       threeManagerRef.current.loadProp(file, (propObj) => {
         setCurrentProp(propObj);
+        setIsPropSelected(true);
       });
     }
   };
@@ -63,10 +66,29 @@ export const App: React.FC = () => {
   const handleAttachProp = () => {
     if (threeManagerRef.current && currentProp && selectedBone) {
       threeManagerRef.current.attachToBone(currentProp, selectedBone);
+      setIsPropSelected(true);
     }
   };
 
-  // Funções de manipulação do objeto
+  // Toggle Selecionar/Desselecionar Objeto por toque
+  const handleToggleSelectProp = () => {
+    if (!threeManagerRef.current) return;
+    if (isPropSelected) {
+      threeManagerRef.current.deselectProp();
+      setIsPropSelected(false);
+    } else {
+      threeManagerRef.current.selectProp();
+      setIsPropSelected(true);
+    }
+  };
+
+  // Alterar o modo do toque (Mover, Rotacionar, Escala)
+  const handleChangeTransformMode = (mode: 'translate' | 'rotate' | 'scale') => {
+    setTransformMode(mode);
+    threeManagerRef.current?.setTransformMode(mode);
+  };
+
+  // Manipulações Manuais por botões
   const handleMoveX = (delta: number) => threeManagerRef.current?.movePropX(delta);
   const handleMoveY = (delta: number) => threeManagerRef.current?.movePropY(delta);
   const handleMoveZ = (delta: number) => threeManagerRef.current?.movePropZ(delta);
@@ -99,10 +121,10 @@ export const App: React.FC = () => {
 
   return (
     <div style={styles.appContainer}>
-      {/* Container Principal do Viewport 3D */}
+      {/* Viewport 3D */}
       <div ref={containerRef} style={styles.canvasContainer} />
 
-      {/* Painel Lateral Estilizado */}
+      {/* Painel Lateral */}
       <div style={styles.sidebar}>
         <h3 style={styles.title}>Controles 3D</h3>
 
@@ -121,12 +143,71 @@ export const App: React.FC = () => {
           <input type="file" accept="image/png, image/jpeg" onChange={handlePropTextureUpload} style={styles.input} />
         </div>
 
-        {/* Ajustes do Objeto */}
+        {/* Controles de Toque Direto / Arraste */}
         {currentProp && (
           <div style={styles.formGroup}>
-            <h4 style={styles.subtitle}>Ajustes do Objeto</h4>
+            <h4 style={styles.subtitle}>Controle por Toque na Tela</h4>
+            <button
+              type="button"
+              onClick={handleToggleSelectProp}
+              style={{
+                ...styles.btn,
+                backgroundColor: isPropSelected ? '#e11d48' : '#10b981',
+                color: '#fff',
+                marginBottom: '8px',
+              }}
+            >
+              {isPropSelected ? '✖️ Desselecionar Objeto' : '✋ Selecionar Objeto (Toque)'}
+            </button>
+
+            {isPropSelected && (
+              <div>
+                <label style={styles.subLabel}>Modo de Arraste por Toque:</label>
+                <div style={styles.btnRow}>
+                  <button
+                    type="button"
+                    onClick={() => handleChangeTransformMode('translate')}
+                    style={{
+                      ...styles.btn,
+                      ...styles.btnMode,
+                      backgroundColor: transformMode === 'translate' ? '#0284c7' : '#1e293b',
+                    }}
+                  >
+                    ✋ Mover
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChangeTransformMode('rotate')}
+                    style={{
+                      ...styles.btn,
+                      ...styles.btnMode,
+                      backgroundColor: transformMode === 'rotate' ? '#4f46e5' : '#1e293b',
+                    }}
+                  >
+                    🔄 Rotação
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChangeTransformMode('scale')}
+                    style={{
+                      ...styles.btn,
+                      ...styles.btnMode,
+                      backgroundColor: transformMode === 'scale' ? '#d97706' : '#1e293b',
+                    }}
+                  >
+                    🔍 Escala
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ajustes Finos Manuais (Botões) */}
+        {currentProp && (
+          <div style={styles.formGroup}>
+            <h4 style={styles.subtitle}>Ajustes Finos (Botões)</h4>
             
-            {/* Movimentação */}
             <label style={styles.subLabel}>Posição:</label>
             <div style={styles.btnRow}>
               <button type="button" onClick={() => handleMoveY(0.05)} style={{ ...styles.btn, ...styles.btnMove }}>⬆️ Cima</button>
@@ -141,15 +222,13 @@ export const App: React.FC = () => {
               <button type="button" onClick={() => handleMoveZ(-0.05)} style={{ ...styles.btn, ...styles.btnMove }}>↙️ Trás</button>
             </div>
 
-            {/* Escala */}
             <label style={styles.subLabel}>Tamanho (Escala):</label>
             <div style={styles.btnRow}>
               <button type="button" onClick={() => handleScaleProp(1.1)} style={{ ...styles.btn, ...styles.btnScale }}>🔍+ Aumentar</button>
               <button type="button" onClick={() => handleScaleProp(0.9)} style={{ ...styles.btn, ...styles.btnScale }}>🔍- Diminuir</button>
             </div>
 
-            {/* Rotação */}
-            <label style={styles.subLabel}>Rotação (Eixos):</label>
+            <label style={styles.subLabel}>Rotação:</label>
             <div style={styles.btnRow}>
               <button type="button" onClick={() => handleRotateProp('y', 15)} style={{ ...styles.btn, ...styles.btnRotate }}>🔄 Giro Y (+15°)</button>
               <button type="button" onClick={() => handleRotateProp('y', -15)} style={{ ...styles.btn, ...styles.btnRotate }}>🔄 Giro Y (-15°)</button>
@@ -338,6 +417,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     fontSize: '12px',
     boxSizing: 'border-box',
+  },
+  btnMode: {
+    border: '1px solid #334155',
+    color: '#fff',
+    flex: 1,
   },
   btnMove: {
     backgroundColor: '#0284c7',
