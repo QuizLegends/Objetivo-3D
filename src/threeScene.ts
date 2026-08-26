@@ -20,6 +20,9 @@ export class ThreeManager {
   private characterModel: THREE.Object3D | null = null;
   private skeleton: THREE.Skeleton | null = null;
   private currentProp: THREE.Object3D | null = null;
+  
+  // Nova propriedade para armazenar as animações do personagem
+  private characterAnimations: THREE.AnimationClip[] = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -88,6 +91,9 @@ export class ThreeManager {
 
       this.characterModel = model;
       this.scene.add(model);
+      
+      // Salva as animações para usar na exportação
+      this.characterAnimations = animations;
 
       // Instancia Mixer de Animação
       this.mixer = new THREE.AnimationMixer(model);
@@ -234,7 +240,8 @@ export class ThreeManager {
       },
       { 
         binary: true,
-        embedImages: true 
+        embedImages: true,
+        animations: this.characterAnimations // Inclui as animações no arquivo final
       }
     );
   }
