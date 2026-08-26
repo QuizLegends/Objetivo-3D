@@ -91,34 +91,36 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', backgroundColor: '#071220', color: '#fff' }}>
-      <div ref={containerRef} style={{ flex: 1, height: '100%' }} />
+    <div style={styles.appContainer}>
+      {/* Container Principal do Viewport 3D */}
+      <div ref={containerRef} style={styles.canvasContainer} />
 
-      <div style={{ width: '320px', padding: '16px', backgroundColor: '#0d1f38', overflowY: 'auto' }}>
-        <h3>Controles 3D</h3>
+      {/* Painel Lateral Estilizado */}
+      <div style={styles.sidebar}>
+        <h3 style={styles.title}>Controles 3D</h3>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', marginBottom: '4px' }}>Personagem (FBX/GLB):</label>
-          <input type="file" accept=".fbx,.glb,.gltf" onChange={handleCharacterUpload} />
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Personagem (FBX/GLB):</label>
+          <input type="file" accept=".fbx,.glb,.gltf" onChange={handleCharacterUpload} style={styles.input} />
         </div>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', marginBottom: '4px' }}>Objeto / Arma (FBX/GLB):</label>
-          <input type="file" accept=".fbx,.glb,.gltf" onChange={handlePropUpload} />
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Objeto / Arma (FBX/GLB):</label>
+          <input type="file" accept=".fbx,.glb,.gltf" onChange={handlePropUpload} style={styles.input} />
         </div>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', marginBottom: '4px' }}>Textura do Objeto (PNG/JPG):</label>
-          <input type="file" accept="image/png, image/jpeg" onChange={handlePropTextureUpload} />
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Textura do Objeto (PNG/JPG):</label>
+          <input type="file" accept="image/png, image/jpeg" onChange={handlePropTextureUpload} style={styles.input} />
         </div>
 
         {bones.length > 0 && (
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '4px' }}>Selecione o Osso:</label>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Selecione o Osso:</label>
             <select
               value={selectedBone}
               onChange={(e) => setSelectedBone(e.target.value)}
-              style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+              style={styles.select}
             >
               <option value="">Selecione...</option>
               {bones.map((b) => (
@@ -127,41 +129,37 @@ export const App: React.FC = () => {
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              onClick={handleAttachProp}
-              style={{ width: '100%', padding: '8px', backgroundColor: '#10b981', color: '#fff', border: 'none', cursor: 'pointer' }}
-            >
+            <button type="button" onClick={handleAttachProp} style={{ ...styles.btn, ...styles.btnAttach }}>
               Anexar Objeto ao Osso
             </button>
           </div>
         )}
 
         {animations.length > 0 && (
-          <div style={{ marginBottom: '16px' }}>
-            <h4>Animações</h4>
-            {animations.map((anim, idx) => (
-              <button
-                type="button"
-                key={anim.uuid || idx}
-                onClick={() => handlePlayAnim(anim)}
-                style={{ display: 'block', width: '100%', padding: '6px', marginBottom: '4px' }}
-              >
-                ▶️ {anim.name || `Animação ${idx + 1}`}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={handleStopAnim}
-              style={{ display: 'block', width: '100%', padding: '6px', marginTop: '8px', backgroundColor: '#ef4444', color: '#fff', border: 'none' }}
-            >
+          <div style={styles.formGroup}>
+            <h4 style={styles.subtitle}>Animações</h4>
+            <div style={styles.animList}>
+              {animations.map((anim, idx) => (
+                <button
+                  type="button"
+                  key={anim.uuid || idx}
+                  onClick={() => handlePlayAnim(anim)}
+                  style={{ ...styles.btn, ...styles.btnAnim }}
+                >
+                  ▶️ {anim.name || `Animação ${idx + 1}`}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={handleStopAnim} style={{ ...styles.btn, ...styles.btnStop }}>
               ⏹️ Parar Animação
             </button>
           </div>
         )}
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', marginBottom: '4px' }}>Brilho ({brightness}):</label>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>
+            Brilho: <span style={styles.spanVal}>{brightness}</span>
+          </label>
           <input
             type="range"
             min="0.2"
@@ -169,12 +167,14 @@ export const App: React.FC = () => {
             step="0.1"
             value={brightness}
             onChange={handleBrightnessChange}
-            style={{ width: '100%' }}
+            style={styles.range}
           />
         </div>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', marginBottom: '4px' }}>Escala do Personagem ({scale}%):</label>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>
+            Escala do Personagem: <span style={styles.spanVal}>{scale}%</span>
+          </label>
           <input
             type="range"
             min="10"
@@ -182,20 +182,121 @@ export const App: React.FC = () => {
             step="5"
             value={scale}
             onChange={handleScaleChange}
-            style={{ width: '100%' }}
+            style={styles.range}
           />
         </div>
 
-        <button
-          type="button"
-          onClick={handleExportGLB}
-          style={{ width: '100%', padding: '12px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
-        >
+        <button type="button" onClick={handleExportGLB} style={{ ...styles.btn, ...styles.btnExport }}>
           📥 Exportar GLB Animado
         </button>
       </div>
     </div>
   );
+};
+
+// Estilização idêntica ao HTML original fornecido
+const styles: { [key: string]: React.CSSProperties } = {
+  appContainer: {
+    display: 'flex',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: '#071220',
+    color: '#ffffff',
+    fontFamily: 'Arial, sans-serif',
+    overflow: 'hidden',
+  },
+  canvasContainer: {
+    flex: 1,
+    height: '100%',
+  },
+  sidebar: {
+    width: '320px',
+    height: '100%',
+    backgroundColor: '#0d1f38',
+    padding: '16px',
+    overflowY: 'auto',
+    borderLeft: '1px solid #1e293b',
+    boxSizing: 'border-box',
+  },
+  title: {
+    marginBottom: '12px',
+    fontSize: '18px',
+    fontWeight: 'bold',
+  },
+  subtitle: {
+    marginBottom: '12px',
+    fontSize: '15px',
+  },
+  formGroup: {
+    marginBottom: '16px',
+  },
+  label: {
+    display: 'block',
+    fontSize: '13px',
+    marginBottom: '6px',
+    color: '#94a3b8',
+  },
+  spanVal: {
+    color: '#38bdf8',
+    fontWeight: 'bold',
+  },
+  input: {
+    width: '100%',
+    padding: '8px',
+    backgroundColor: '#1e293b',
+    color: '#fff',
+    border: '1px solid #334155',
+    borderRadius: '4px',
+    boxSizing: 'border-box',
+  },
+  select: {
+    width: '100%',
+    padding: '8px',
+    backgroundColor: '#1e293b',
+    color: '#fff',
+    border: '1px solid #334155',
+    borderRadius: '4px',
+    marginBottom: '8px',
+    boxSizing: 'border-box',
+  },
+  range: {
+    width: '100%',
+    accentColor: '#38bdf8',
+  },
+  animList: {
+    maxHeight: '150px',
+    overflowY: 'auto',
+    marginBottom: '6px',
+  },
+  btn: {
+    width: '100%',
+    padding: '10px',
+    marginTop: '4px',
+    border: 'none',
+    borderRadius: '4px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+  },
+  btnAttach: {
+    backgroundColor: '#10b981',
+    color: '#fff',
+  },
+  btnAnim: {
+    backgroundColor: '#3b82f6',
+    color: '#fff',
+    marginBottom: '6px',
+  },
+  btnStop: {
+    backgroundColor: '#ef4444',
+    color: '#fff',
+  },
+  btnExport: {
+    backgroundColor: '#8b5cf6',
+    color: '#fff',
+    padding: '12px',
+    marginTop: '12px',
+  },
 };
 
 export default App;
