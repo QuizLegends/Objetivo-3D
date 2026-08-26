@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
 export class ThreeManager {
   private container: HTMLElement;
@@ -10,293 +10,233 @@ export class ThreeManager {
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
+  private dirLight: THREE.DirectionalLight;
+  private ambLight: THREE.AmbientLight;
 
   private mixer: THREE.AnimationMixer | null = null;
-  private clock: THREE.Clock = new THREE.Clock();
-  
-  private character: THREE.Object3D | null = null;
-  private attachedProp: THREE.Object3D | null = null;
-  private animations: THREE.AnimationClip[] = [];
-  
-  private dirLight: THREE.DirectionalLight;
-  private ambientLight: THREE.AmbientLight;
+  private clock: THREE.Clock;
+  private currentAction: THREE.AnimationAction | null = null;
 
-  private reqId: number | null = null;
+  private characterModel: THREE.Object3D | null = null;
+  private skeleton: THREE.Skeleton | null = null;
+  private currentProp: THREE.Object3D | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
 
-    // 1. Cena e Iluminação
+    // Configuração da Cena
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#071220');
+    this.scene.background = new THREE.Color(0x071220);
 
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
-    this.scene.add(this.ambientLight);
-
-    this.dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
-    this.dirLight.position.set(5, 10, 7);
-    this.scene.add(this.dirLight);
-
-    // 2. Câmera
-    this.camera = new THREE.PerspectiveCamera(
-      45,
-      container.clientWidth / container.clientHeight,
-      0.1,
-      1000
-    );
+    // Câmera
+    const aspect = container.clientWidth / container.clientHeight || 1;
+    this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
     this.camera.position.set(0, 1.5, 3);
 
-    // 3. Renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // Renderizador
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.container.appendChild(this.renderer.domElement);
+    this.renderer.shadowMap.enabled = true;
+    container.appendChild(this.renderer.domElement);
 
-    // 4. Controles
+    // Controles Orbitais
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
+    this.controls.target.set(0, 1, 0);
 
+    // Iluminação
+    this.ambLight = new THREE.AmbientLight(0xffffff, 1.0);
+    this.scene.add(this.ambLight);
+
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.dirLight.position.set(2, 4, 3);
+    this.dirLight.castShadow = true;
+    this.scene.add(this.dirLight);
+
+    // Grade Auxiliar
+    const grid = new THREE.GridHelper(10, 10, 0x1e293b, 0x0f172a);
+    this.scene.add(grid);
+
+    this.clock = new THREE.Clock();
     this.animate();
   }
 
-  // Loop de Renderização
+  // Loop de Renderização & Atualização das Animações
   private animate = () => {
-    this.reqId = requestAnimationFrame(this.animate);
+    requestAnimationFrame(this.animate);
     const delta = this.clock.getDelta();
-
     if (this.mixer) {
       this.mixer.update(delta);
     }
-
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   };
 
-  // Centralizar Câmera no Objeto/Personagem
-  private centerCameraOn(object: THREE.Object3D) {
-    const box = new THREE.Box3().setFromObject(object);
-    if (box.isEmpty()) return;
-
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-
-    const fov = this.camera.fov * (Math.PI / 180);
-    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-    cameraZ *= 2.0; // Recuo seguro de visualização
-
-    this.camera.position.set(center.x, center.y + (maxDim * 0.2), center.z + cameraZ);
-    this.camera.lookAt(center);
-    this.controls.target.copy(center);
-    this.controls.update();
-  }
-
-  // Carregar Personagem (FBX ou GLB)
-  public loadCharacter(file: File, callback: (bones: THREE.Bone[], anims: THREE.AnimationClip[]) => void) {
+  // Carregar Personagem (FBX ou GLB/GLTF)
+  public loadCharacter(
+    file: File,
+    onLoaded: (bones: THREE.Bone[], anims: THREE.AnimationClip[]) => void
+  ) {
     const url = URL.createObjectURL(file);
     const ext = file.name.split('.').pop()?.toLowerCase();
 
-    const onLoad = (obj: THREE.Object3D, animations: THREE.AnimationClip[]) => {
-      if (this.character) this.scene.remove(this.character);
+    const handleModelLoad = (model: THREE.Object3D, animations: THREE.AnimationClip[]) => {
+      if (this.characterModel) {
+        this.scene.remove(this.characterModel);
+      }
 
-      this.character = obj;
-      this.animations = animations || [];
-      
-      this.character.position.set(0, 0, 0);
-      this.scene.add(this.character);
+      this.characterModel = model;
+      this.scene.add(model);
 
-      // Mixer de Animação
-      this.mixer = new THREE.AnimationMixer(this.character);
+      // Instancia Mixer de Animação
+      this.mixer = new THREE.AnimationMixer(model);
 
-      // Coleta ossos
+      // Coleta Ossos do Esqueleto
       const bones: THREE.Bone[] = [];
-      this.character.traverse((child) => {
+      model.traverse((child) => {
         if ((child as THREE.Bone).isBone) {
           bones.push(child as THREE.Bone);
         }
       });
 
-      // Enquadra a câmera automaticamente no personagem recém-carregado
-      this.centerCameraOn(this.character);
-
+      onLoaded(bones, animations);
       URL.revokeObjectURL(url);
-      callback(bones, this.animations);
     };
 
     if (ext === 'fbx') {
       const loader = new FBXLoader();
-      loader.load(url, (fbx) => onLoad(fbx, fbx.animations || []));
+      loader.load(url, (fbx) => handleModelLoad(fbx, fbx.animations || []));
     } else if (ext === 'glb' || ext === 'gltf') {
       const loader = new GLTFLoader();
-      loader.load(url, (gltf) => onLoad(gltf.scene, gltf.animations || []));
+      loader.load(url, (gltf) => handleModelLoad(gltf.scene, gltf.animations || []));
     }
   }
 
-  // Carregar Objeto / Arma
-  public loadProp(file: File, callback: (prop: THREE.Object3D) => void) {
+  // Carregar Objeto / Arma (FBX ou GLB/GLTF)
+  public loadProp(file: File, onLoaded: (prop: THREE.Object3D) => void) {
     const url = URL.createObjectURL(file);
     const ext = file.name.split('.').pop()?.toLowerCase();
 
-    const onLoad = (obj: THREE.Object3D) => {
-      if (this.attachedProp) {
-        this.attachedProp.removeFromParent();
-      }
-
-      this.attachedProp = obj;
-      this.attachedProp.position.set(0, 0, 0);
-      this.attachedProp.rotation.set(0, 0, 0);
-
+    const handlePropLoad = (prop: THREE.Object3D) => {
+      this.currentProp = prop;
+      onLoaded(prop);
       URL.revokeObjectURL(url);
-      callback(obj);
     };
 
     if (ext === 'fbx') {
       const loader = new FBXLoader();
-      loader.load(url, onLoad);
+      loader.load(url, (fbx) => handlePropLoad(fbx));
     } else if (ext === 'glb' || ext === 'gltf') {
       const loader = new GLTFLoader();
-      loader.load(url, (gltf) => onLoad(gltf.scene));
+      loader.load(url, (gltf) => handlePropLoad(gltf.scene));
     }
   }
 
-  // Anexar o Objeto ao Osso Selecionado
-  public attachToBone(prop: THREE.Object3D, boneName: string) {
-    if (!this.character) return;
-
-    let targetBone: THREE.Bone | null = null;
-    this.character.traverse((child) => {
-      if ((child as THREE.Bone).isBone && child.name === boneName) {
-        targetBone = child as THREE.Bone;
-      }
-    });
-
-    if (targetBone) {
-      (targetBone as THREE.Bone).add(prop);
-      prop.position.set(0, 0, 0);
-      prop.rotation.set(0, 0, 0);
-      
-      // Centraliza a câmera no conjunto (Personagem + Objeto)
-      this.centerCameraOn(this.character);
-    }
-  }
-
-  // Aplicar Textura Customizada ao Objeto (Garantindo compatibilidade de exportação)
+  // Aplicar Textura customizada no Objeto carregado
   public applyPropTexture(file: File) {
-    if (!this.attachedProp) return;
-
+    if (!this.currentProp) return;
     const url = URL.createObjectURL(file);
-    const loader = new THREE.TextureLoader();
-    loader.load(url, (texture) => {
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.flipY = false; // Ajuste padrão para mapeamento UV de modelos 3D modernos
+    const textureLoader = new THREE.TextureLoader();
 
-      this.attachedProp?.traverse((child) => {
+    textureLoader.load(url, (texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      this.currentProp?.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          
-          // Cria um novo MeshStandardMaterial para garantir compatibilidade com o GLTFExporter
-          const newMat = new THREE.MeshStandardMaterial({
-            map: texture,
-            roughness: 0.5,
-            metalness: 0.1
-          });
-
-          mesh.material = newMat;
-          mesh.material.needsUpdate = true;
+          mesh.material = new THREE.MeshStandardMaterial({ map: texture });
         }
       });
       URL.revokeObjectURL(url);
     });
   }
 
-  // --- MÉTODOS DE MANIPULAÇÃO DO OBJETO ANEXADO ---
+  // Anexar Objeto a um Osso específico do esqueleto
+  public attachToBone(prop: THREE.Object3D, boneName: string) {
+    if (!this.characterModel) return;
 
-  public moveAttachedProp(deltaX: number, deltaY: number, deltaZ: number) {
-    if (this.attachedProp) {
-      this.attachedProp.position.x += deltaX;
-      this.attachedProp.position.y += deltaY;
-      this.attachedProp.position.z += deltaZ;
+    let targetBone: THREE.Object3D | null = null;
+    this.characterModel.traverse((child) => {
+      if (child.name === boneName) {
+        targetBone = child;
+      }
+    });
+
+    if (targetBone) {
+      (targetBone as THREE.Object3D).add(prop);
+      prop.position.set(0, 0, 0);
+      prop.rotation.set(0, 0, 0);
     }
   }
 
-  public setAttachedPropScale(scale: number) {
-    if (this.attachedProp) {
-      this.attachedProp.scale.setScalar(scale);
+  // Tocar Animação
+  public playAnimation(clip: THREE.AnimationClip) {
+    if (!this.mixer) return;
+    if (this.currentAction) {
+      this.currentAction.stop();
     }
+    this.currentAction = this.mixer.clipAction(clip);
+    this.currentAction.play();
   }
 
-  public rotateAttachedProp(degrees: number) {
-    if (this.attachedProp) {
-      const radians = (degrees * Math.PI) / 180;
-      this.attachedProp.rotation.y = radians;
-    }
-  }
-
-  // --- ANIMAÇÕES E EXPORTAÇÃO CORRIGIDA ---
-
-  public playAnimation(anim: THREE.AnimationClip) {
-    if (this.mixer) {
-      this.mixer.stopAllAction();
-      const action = this.mixer.clipAction(anim);
-      action.play();
-    }
-  }
-
+  // Parar Animação
   public stopAnimation() {
-    if (this.mixer) {
-      this.mixer.stopAllAction();
+    if (this.currentAction) {
+      this.currentAction.stop();
+      this.currentAction = null;
     }
   }
 
+  // Alterar Brilho da Iluminação
   public setBrightness(val: number) {
-    this.ambientLight.intensity = val;
-    this.dirLight.intensity = val * 1.3;
+    this.dirLight.intensity = val;
+    this.ambLight.intensity = val * 0.7;
   }
 
+  // Alterar Escala do Personagem
   public setCharacterScale(percent: number) {
-    if (this.character) {
-      const factor = percent / 100;
-      this.character.scale.setScalar(factor);
-    }
+    if (!this.characterModel) return;
+    const s = percent / 100;
+    this.characterModel.scale.set(s, s, s);
   }
 
-  // Exportar GLB com Animações e Materiais Preservados
+  // Exportar Modelo para arquivo .GLB
   public exportGLB() {
-    if (!this.character) return;
+    if (!this.characterModel) {
+      alert('Nenhum modelo carregado para exportar.');
+      return;
+    }
 
     const exporter = new GLTFExporter();
-    
-    // Configurações essenciais para incluir animações e texturas no arquivo final
-    const options = {
-      binary: true,
-      animations: this.animations, // Inclui a lista de animações no GLB baixado
-      embedImages: true             // Garante a inclusão de imagens/texturas aplicadas
-    };
-
     exporter.parse(
-      this.character,
+      this.scene,
       (gltf) => {
-        const blob = new Blob([gltf as ArrayBuffer], { type: 'application/octet-stream' });
+        const output = JSON.stringify(gltf, null, 2);
+        const blob = new Blob([output], { type: 'application/json' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = 'modelo_animado.glb';
+        link.download = 'modelo_editado.glb';
         link.click();
       },
       (error) => {
         console.error('Erro ao exportar GLB:', error);
       },
-      options
+      { binary: true }
     );
   }
 
+  // Redimensionar Canvas
   public resize(width: number, height: number) {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
   }
 
+  // Limpar recursos ao desmontar componente React
   public dispose() {
-    if (this.reqId) cancelAnimationFrame(this.reqId);
     this.renderer.dispose();
+    if (this.container.contains(this.renderer.domElement)) {
+      this.container.removeChild(this.renderer.domElement);
+    }
   }
 }
