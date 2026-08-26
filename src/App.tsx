@@ -20,31 +20,35 @@ export const App: React.FC = () => {
   const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
 
   useEffect(() => {
-    if (containerRef.current && !threeManagerRef.current) {
-      const manager = new ThreeManager(containerRef.current);
-      threeManagerRef.current = manager;
+    if (!containerRef.current || threeManagerRef.current) return;
 
-      manager.setTransformCallback((pos, rot, scale) => {
-        setPropPos({ x: Number(pos.x.toFixed(2)), y: Number(pos.y.toFixed(2)), z: Number(pos.z.toFixed(2)) });
-        setPropRot({ x: Number(rot.x.toFixed(0)), y: Number(rot.y.toFixed(0)), z: Number(rot.z.toFixed(0)) });
-        setPropScale(Number(scale.x.toFixed(2)));
-      });
+    const manager = new ThreeManager(containerRef.current);
+    threeManagerRef.current = manager;
 
-      const handleResize = () => {
-        if (containerRef.current && threeManagerRef.current) {
-          threeManagerRef.current.resize(
-            containerRef.current.clientWidth,
-            containerRef.current.clientHeight
-          );
-        }
-      };
+    manager.setTransformCallback((pos, rot, scale) => {
+      setPropPos({ x: Number(pos.x.toFixed(2)), y: Number(pos.y.toFixed(2)), z: Number(pos.z.toFixed(2)) });
+      setPropRot({ x: Number(rot.x.toFixed(0)), y: Number(rot.y.toFixed(0)), z: Number(rot.z.toFixed(0)) });
+      setPropScale(Number(scale.x.toFixed(2)));
+    });
 
-      window.addEventListener('resize', handleResize);
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        threeManagerRef.current?.dispose();
-      };
-    }
+    const handleResize = () => {
+      if (containerRef.current && threeManagerRef.current) {
+        threeManagerRef.current.resize(
+          containerRef.current.clientWidth,
+          containerRef.current.clientHeight
+        );
+      }
+    };
+
+    // Atualização imediata de dimensão pós-montagem
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      threeManagerRef.current?.dispose();
+      threeManagerRef.current = null;
+    };
   }, []);
 
   const handleCharacterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,7 +107,6 @@ export const App: React.FC = () => {
     threeManagerRef.current?.setPropRotation(newRot.x, newRot.y, newRot.z);
   };
 
-  // Atualizar tamanho do objeto
   const updatePropScale = (delta: number) => {
     const newScale = Math.max(0.05, Number((propScale + delta).toFixed(2)));
     setPropScale(newScale);
@@ -164,7 +167,6 @@ export const App: React.FC = () => {
           <div style={styles.transformSection}>
             <h4 style={styles.subtitle}>Ajustar Objeto (Tamanho / Posição)</h4>
             
-            {/* Seletor de Ação de Toque na Tela */}
             <div style={styles.modeGroup}>
               <button
                 type="button"
@@ -189,7 +191,6 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Aumentar / Diminuir Objeto */}
             <div style={styles.axisGroup}>
               <span style={styles.axisLabel}>Tamanho do Objeto (Escala):</span>
               <div style={styles.inlineControls}>
@@ -206,7 +207,6 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Posição */}
             <div style={styles.axisGroup}>
               <span style={styles.axisLabel}>Posição no Espaço:</span>
               <div style={styles.inlineControls}>
@@ -249,7 +249,6 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Rotação */}
             <div style={styles.axisGroup}>
               <span style={styles.axisLabel}>Giro & Rotação (360°):</span>
               <div style={styles.inlineControls}>
@@ -363,9 +362,9 @@ export const App: React.FC = () => {
 };
 
 const styles: { [key: string]: React.CSSProperties } = {
-  appContainer: { display: 'flex', width: '100vw', height: '100vh', backgroundColor: '#071220', color: '#fff', fontFamily: 'Arial, sans-serif', overflow: 'hidden' },
-  canvasContainer: { flex: 1, height: '100%' },
-  sidebar: { width: '360px', height: '100%', backgroundColor: '#0d1f38', padding: '16px', overflowY: 'auto', borderLeft: '1px solid #1e293b', boxSizing: 'border-box' },
+  appContainer: { display: 'flex', width: '100vw', height: '100vh', backgroundColor: '#071220', color: '#fff', overflow: 'hidden' },
+  canvasContainer: { flex: 1, height: '100%', minWidth: '0' },
+  sidebar: { width: '360px', minWidth: '360px', height: '100%', backgroundColor: '#0d1f38', padding: '16px', overflowY: 'auto', borderLeft: '1px solid #1e293b', boxSizing: 'border-box' },
   title: { marginBottom: '12px', fontSize: '18px', fontWeight: 'bold' },
   subtitle: { margin: '12px 0 8px 0', fontSize: '14px', color: '#e2e8f0' },
   formGroup: { marginBottom: '16px' },
