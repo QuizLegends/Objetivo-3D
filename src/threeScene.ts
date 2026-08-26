@@ -42,7 +42,7 @@ export class ThreeManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     
-    // Configura o espaço de cores correto para evitar modelos pretos e sombras estouradas
+    // Configura o espaço de cores correto (Resolve o problema de textura do personagem)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     
     container.appendChild(this.renderer.domElement);
@@ -89,7 +89,7 @@ export class ThreeManager {
     this.renderer.setSize(width, height);
   }
 
-  // Correção Avançada de Materiais, Normais e Texturas
+  // Correção de Materiais que MANTÉM a cor original do Objeto
   private sanitizeMaterials(model: THREE.Object3D) {
     model.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -97,48 +97,45 @@ export class ThreeManager {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
-        // Recalcula as normais da geometria para corrigir iluminação quebrada/invertida
+        // Recalcula as normais da geometria
         if (mesh.geometry) {
           mesh.geometry.computeVertexNormals();
         }
 
-        // Se o modelo veio sem material
-        if (!mesh.material) {
-          mesh.material = new THREE.MeshStandardMaterial({
-            color: 0x909090,
-            roughness: 0.5,
-            metalness: 0.1,
-            side: THREE.DoubleSide
-          });
-        } else {
+        if (mesh.material) {
           const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
 
-          const updatedMaterials = materials.map((mat) => {
+          materials.forEach((mat) => {
             mat.side = THREE.DoubleSide;
-            mat.transparent = false;
-            mat.opacity = 1.0;
+            
+            // Remove transparência fantasma (comum em arquivos FBX e GLB)
+            if (mat.transparent && mat.opacity >= 0.99) {
+              mat.transparent = false;
+              mat.depthWrite = true;
+            }
 
             const standardMat = mat as THREE.MeshStandardMaterial;
 
-            // Se o modelo não tiver imagem de textura associada, aplica uma cor neutra visível
-            if (!standardMat.map) {
-              return new THREE.MeshStandardMaterial({
-                color: 0xa0a0a0,
-                roughness: 0.4,
-                metalness: 0.1,
-                side: THREE.DoubleSide
-              });
-            } else {
-              // Se tiver textura, garante que o mapa de cores use sRGB
+            // Se tiver textura, ajusta para exibir as cores perfeitamente
+            if (standardMat.map) {
               standardMat.map.colorSpace = THREE.SRGBColorSpace;
               standardMat.map.needsUpdate = true;
+            } 
+            // Se NÃO tiver textura, mas tiver cor
+            else if (standardMat.color) {
+              // Só altera a cor se o objeto vier 100% preto por erro do arquivo
+              if (standardMat.color.r === 0 && standardMat.color.g === 0 && standardMat.color.b === 0) {
+                standardMat.color.setHex(0xaaaaaa);
+              }
+              // Caso contrário, a cor original (vermelha, azul, metalizada, etc) é preservada!
             }
 
-            mat.needsUpdate = true;
-            return mat;
-          });
+            // Calibra reflexo e metal para não ficar preto na sombra
+            if ('roughness' in mat) standardMat.roughness = 0.7;
+            if ('metalness' in mat) standardMat.metalness = 0.1;
 
-          mesh.material = Array.isArray(mesh.material) ? updatedMaterials : updatedMaterials[0];
+            mat.needsUpdate = true;
+          });
         }
       }
     });
