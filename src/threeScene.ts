@@ -41,13 +41,17 @@ export class ThreeManager {
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
+    
+    // Configura o espaço de cores correto para evitar modelos pretos e sombras estouradas
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    
     container.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.target.set(0, 1, 0);
 
-    // Iluminação
+    // Iluminação Geral do Cenário
     this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.8);
     this.hemiLight.position.set(0, 20, 0);
     this.scene.add(this.hemiLight);
@@ -85,7 +89,7 @@ export class ThreeManager {
     this.renderer.setSize(width, height);
   }
 
-  // Correção de Materiais e Cores dos Modelos
+  // Correção Avançada de Materiais, Normais e Texturas
   private sanitizeMaterials(model: THREE.Object3D) {
     model.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -93,37 +97,54 @@ export class ThreeManager {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
-        if (mesh.material) {
+        // Recalcula as normais da geometria para corrigir iluminação quebrada/invertida
+        if (mesh.geometry) {
+          mesh.geometry.computeVertexNormals();
+        }
+
+        // Se o modelo veio sem material
+        if (!mesh.material) {
+          mesh.material = new THREE.MeshStandardMaterial({
+            color: 0x909090,
+            roughness: 0.5,
+            metalness: 0.1,
+            side: THREE.DoubleSide
+          });
+        } else {
           const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          materials.forEach((mat) => {
-            // Garante exibição em ambos os lados
+
+          const updatedMaterials = materials.map((mat) => {
             mat.side = THREE.DoubleSide;
             mat.transparent = false;
             mat.opacity = 1.0;
 
-            // Se for material Phong, Standard ou Basic, garante que a cor não seja preta total (0x000000)
-            if ('color' in mat && mat.color) {
-              if (mat.color.r === 0 && mat.color.g === 0 && mat.color.b === 0 && !mat.map) {
-                mat.color.setHex(0xcccccc); // Aplica tom cinza claro se não houver textura nem cor definida
-              }
-            }
+            const standardMat = mat as THREE.MeshStandardMaterial;
 
-            // Ajusta metallic/roughness para evitar reflexos pretos
-            if ('roughness' in mat) {
-              (mat as THREE.MeshStandardMaterial).roughness = 0.6;
-            }
-            if ('metalness' in mat) {
-              (mat as THREE.MeshStandardMaterial).metalness = 0.1;
+            // Se o modelo não tiver imagem de textura associada, aplica uma cor neutra visível
+            if (!standardMat.map) {
+              return new THREE.MeshStandardMaterial({
+                color: 0xa0a0a0,
+                roughness: 0.4,
+                metalness: 0.1,
+                side: THREE.DoubleSide
+              });
+            } else {
+              // Se tiver textura, garante que o mapa de cores use sRGB
+              standardMat.map.colorSpace = THREE.SRGBColorSpace;
+              standardMat.map.needsUpdate = true;
             }
 
             mat.needsUpdate = true;
+            return mat;
           });
+
+          mesh.material = Array.isArray(mesh.material) ? updatedMaterials : updatedMaterials[0];
         }
       }
     });
   }
 
-  // Carregar Personagem
+  // Carregar Personagem (FBX / GLB)
   public loadCharacter(file: File, callback: (bones: THREE.Bone[], anims: THREE.AnimationClip[]) => void) {
     const url = URL.createObjectURL(file);
     const ext = file.name.split('.').pop()?.toLowerCase();
@@ -153,7 +174,7 @@ export class ThreeManager {
       this.mixer = new THREE.AnimationMixer(model);
       this.animations = anims;
 
-      // Vincula animações à raiz do grupo para permitir o export do GLB
+      // Vincula as animações na raiz do grupo para exportação do GLB
       this.characterGroup!.animations = anims;
 
       callback(this.bones, this.animations);
@@ -189,7 +210,7 @@ export class ThreeManager {
     }
   }
 
-  // Fixar Objeto no Osso do Personagem
+  // Anexar Objeto ao Osso do Personagem
   public attachToBone(propObj: THREE.Object3D, boneName: string): boolean {
     let targetBone: THREE.Bone | null = null;
 
@@ -208,12 +229,12 @@ export class ThreeManager {
     return false;
   }
 
-  // Desfixar Objeto
+  // Remover Objeto do Osso
   public detachFromBone(propObj: THREE.Object3D) {
     this.scene.add(propObj);
   }
 
-  // Animação
+  // Executar Animação
   public playAnimation(clip: THREE.AnimationClip) {
     if (!this.mixer) return;
     if (this.currentAction) {
@@ -223,6 +244,7 @@ export class ThreeManager {
     this.currentAction.play();
   }
 
+  // Parar Animação
   public stopAnimation() {
     if (this.currentAction) {
       this.currentAction.stop();
@@ -230,7 +252,7 @@ export class ThreeManager {
     }
   }
 
-  // Brilho
+  // Controle de Brilho das Luzes
   public setBrightness(val: number) {
     this.dirLight.intensity = val;
     this.fillLight.intensity = val * 0.6;
@@ -238,7 +260,7 @@ export class ThreeManager {
     this.ambientLight.intensity = val;
   }
 
-  // Escala
+  // Escala do Personagem
   public setCharacterScale(scalePercent: number) {
     if (this.characterModel) {
       const s = scalePercent / 100;
@@ -246,7 +268,7 @@ export class ThreeManager {
     }
   }
 
-  // Exportar GLB com Animações e Materiais
+  // Exportar Personagem + Prop Anexado para GLB
   public exportGLB() {
     if (!this.characterGroup) return;
 
