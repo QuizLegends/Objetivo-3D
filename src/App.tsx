@@ -1,334 +1,168 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { ThreeManager } from './threeScene';
-
-interface AttachedProp {
-  id: string;
-  name: string;
-  object: THREE.Object3D;
-  boneName: string;
-  scale: number;
-  posX: number; posY: number; posZ: number;
-  rotX: number; rotY: number; rotZ: number;
-}
 
 export default function App() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const managerRef = useRef<ThreeManager | null>(null);
+  // Estados de transformação
+  const [posX, setPosX] = useState<number>(0);
+  const [posY, setPosY] = useState<number>(0);
+  const [posZ, setPosZ] = useState<number>(0);
+  const [rotY, setRotY] = useState<number>(0);
+  
+  // Estado de anexação
+  const [isAttached, setIsAttached] = useState<boolean>(false);
+  const [statusMsg, setStatusMsg] = useState<string>('Objeto pronto para edição');
 
-  const [characterLoaded, setCharacterLoaded] = useState(false);
-  const [bones, setBones] = useState<THREE.Bone[]>([]);
-  const [animations, setAnimations] = useState<THREE.AnimationClip[]>([]);
-  const [showAnimMenu, setShowAnimMenu] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  // Incrementos
+  const stepPos = 0.1;
+  const stepRot = 15; // graus
 
-  const [brightness, setBrightness] = useState(1.2);
-  const [charScale, setCharScale] = useState(100);
-
-  const [pendingProp, setPendingProp] = useState<{ object: THREE.Object3D; name: string } | null>(null);
-  const [selectedBone, setSelectedBone] = useState('');
-  const [propsList, setPropsList] = useState<AttachedProp[]>([]);
-  const [selectedPropId, setSelectedPropId] = useState<string | null>(null);
-
-  const charInputRef = useRef<HTMLInputElement>(null);
-  const propInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (containerRef.current) {
-      const mgr = new ThreeManager(containerRef.current);
-      managerRef.current = mgr;
-
-      const handleResize = () => {
-        if (containerRef.current) {
-          mgr.resize(containerRef.current.clientWidth, containerRef.current.clientHeight);
-        }
-      };
-      window.addEventListener('resize', handleResize);
-
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        mgr.dispose();
-      };
-    }
-  }, []);
-
-  // Upload Personagem
-  const handleCharUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && managerRef.current) {
-      managerRef.current.loadCharacter(file, (loadedBones, loadedAnims) => {
-        setBones(loadedBones);
-        setAnimations(loadedAnims);
-        setCharacterLoaded(true);
-      });
-    }
+  // Funções de ajuste numérico (Posição)
+  const adjustValue = (setter: React.Dispatch<React.SetStateAction<number>>, current: number, delta: number) => {
+    setter(parseFloat((current + delta).toFixed(2)));
   };
 
-  // Upload Objeto
-  const handlePropUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && managerRef.current) {
-      managerRef.current.loadProp(file, (obj) => {
-        setPendingProp({ object: obj, name: file.name });
-      });
+  // Funções de ajuste numérico (Rotação 360)
+  const adjustRotation = (delta: number) => {
+    setRotY((prev) => {
+      let newRot = (prev + delta) % 360;
+      if (newRot < 0) newRot += 360;
+      return newRot;
+    });
+  };
+
+  // Alternar fixação no personagem
+  const toggleAttach = () => {
+    setIsAttached(!isAttached);
+    if (!isAttached) {
+      setStatusMsg('Objeto FIXADO na mão/membro do personagem!');
+    } else {
+      setStatusMsg('Objeto DESFIXADO (Edição livre)');
     }
   };
-
-  // Anexar Objeto ao Osso
-  const confirmAttach = () => {
-    if (!pendingProp || !selectedBone || !managerRef.current) return;
-    const ok = managerRef.current.attachToBone(pendingProp.object, selectedBone);
-    if (ok) {
-      const newProp: AttachedProp = {
-        id: Math.random().toString(36).substring(2, 9),
-        name: pendingProp.name,
-        object: pendingProp.object,
-        boneName: selectedBone,
-        scale: 100,
-        posX: 0, posY: 0, posZ: 0,
-        rotX: 0, rotY: 0, rotZ: 0,
-      };
-      setPropsList((prev) => [...prev, newProp]);
-      setSelectedPropId(newProp.id);
-      setPendingProp(null);
-    }
-  };
-
-  // Atualizar transformação do objeto
-  const updateTransform = (id: string, key: keyof AttachedProp, value: number) => {
-    setPropsList((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const updated = { ...p, [key]: value };
-
-        const s = updated.scale / 100;
-        updated.object.scale.set(s, s, s);
-        updated.object.position.set(updated.posX, updated.posY, updated.posZ);
-        updated.object.rotation.set(
-          THREE.MathUtils.degToRad(updated.rotX),
-          THREE.MathUtils.degToRad(updated.rotY),
-          THREE.MathUtils.degToRad(updated.rotZ)
-        );
-        return updated;
-      })
-    );
-  };
-
-  const selectedProp = propsList.find((p) => p.id === selectedPropId);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#071220] text-slate-100 font-sans select-none overflow-hidden">
-      {/* Topo / Navbar */}
-      <header className="h-14 bg-[#071220] border-b border-[#1e3a5f] px-4 flex items-center justify-between z-10 shrink-0">
-        <div className="text-blue-400 font-bold text-base flex items-center gap-2">
-          <span>⬡ Editor 3D</span>
+    <div className="flex flex-col h-screen bg-[#071220] text-white font-sans overflow-hidden">
+      {/* Área da Viewport 3D */}
+      <div className="flex-1 relative bg-black">
+        <div id="canvas-container" className="w-full h-full">
+          {/* O Canvas do Three.js é montado aqui */}
         </div>
-        <div className="flex items-center gap-2">
-          <input ref={charInputRef} type="file" accept=".fbx,.glb,.gltf" className="hidden" onChange={handleCharUpload} />
-          <button onClick={() => charInputRef.current?.click()} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs font-semibold">
-            👤 Personagem
-          </button>
+        
+        {/* Banner de Status */}
+        <div className="absolute top-3 left-3 right-3 bg-slate-900/80 backdrop-blur border border-slate-700 p-2 rounded-lg text-center text-xs text-cyan-400">
+          {statusMsg}
+        </div>
+      </div>
 
-          <input ref={propInputRef} type="file" accept=".fbx,.glb,.gltf" className="hidden" onChange={handlePropUpload} />
-          <button onClick={() => propInputRef.current?.click()} disabled={!characterLoaded} className="px-3 py-1.5 bg-[#142843] hover:bg-[#1e3a5f] disabled:opacity-40 rounded text-xs border border-[#1e3a5f]">
-            📦 Objeto
-          </button>
+      {/* Painel de Controles Otimizado para Celular */}
+      <div className="bg-slate-900 border-t border-slate-800 p-4 space-y-4 max-h-[50vh] overflow-y-auto">
+        
+        <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider text-center border-b border-slate-800 pb-2">
+          Ajustes do Objeto
+        </h2>
 
-          <button onClick={() => setShowAnimMenu(!showAnimMenu)} disabled={!characterLoaded || animations.length === 0} className="px-3 py-1.5 bg-[#142843] hover:bg-[#1e3a5f] disabled:opacity-40 rounded text-xs border border-[#1e3a5f]">
-            🎬 Animações ({animations.length})
+        {/* 1. Mover para Cima / Baixo */}
+        <div className="flex items-center justify-between bg-slate-800/60 p-2 rounded-lg">
+          <span className="text-sm font-medium">Cima / Baixo</span>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => adjustValue(setPosY, posY, -stepPos)}
+              className="w-10 h-10 bg-rose-600 active:bg-rose-700 text-white font-bold rounded-lg text-lg flex items-center justify-center shadow"
+            >
+              -
+            </button>
+            <span className="w-14 text-center font-mono text-sm bg-slate-950 py-1 rounded border border-slate-700">
+              {posY.toFixed(1)}
+            </span>
+            <button
+              onClick={() => adjustValue(setPosY, posY, stepPos)}
+              className="w-10 h-10 bg-emerald-600 active:bg-emerald-700 text-white font-bold rounded-lg text-lg flex items-center justify-center shadow"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Mover para Esquerda / Direita */}
+        <div className="flex items-center justify-between bg-slate-800/60 p-2 rounded-lg">
+          <span className="text-sm font-medium">Esquerda / Direita</span>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => adjustValue(setPosX, posX, -stepPos)}
+              className="w-10 h-10 bg-rose-600 active:bg-rose-700 text-white font-bold rounded-lg text-lg flex items-center justify-center shadow"
+            >
+              -
+            </button>
+            <span className="w-14 text-center font-mono text-sm bg-slate-950 py-1 rounded border border-slate-700">
+              {posX.toFixed(1)}
+            </span>
+            <button
+              onClick={() => adjustValue(setPosX, posX, stepPos)}
+              className="w-10 h-10 bg-emerald-600 active:bg-emerald-700 text-white font-bold rounded-lg text-lg flex items-center justify-center shadow"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Mover para Frente / Trás */}
+        <div className="flex items-center justify-between bg-slate-800/60 p-2 rounded-lg">
+          <span className="text-sm font-medium">Frente / Trás</span>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => adjustValue(setPosZ, posZ, -stepPos)}
+              className="w-10 h-10 bg-rose-600 active:bg-rose-700 text-white font-bold rounded-lg text-lg flex items-center justify-center shadow"
+            >
+              -
+            </button>
+            <span className="w-14 text-center font-mono text-sm bg-slate-950 py-1 rounded border border-slate-700">
+              {posZ.toFixed(1)}
+            </span>
+            <button
+              onClick={() => adjustValue(setPosZ, posZ, stepPos)}
+              className="w-10 h-10 bg-emerald-600 active:bg-emerald-700 text-white font-bold rounded-lg text-lg flex items-center justify-center shadow"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Rotacionar 360 Graus */}
+        <div className="flex items-center justify-between bg-slate-800/60 p-2 rounded-lg">
+          <span className="text-sm font-medium">Girar (360°)</span>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => adjustRotation(-stepRot)}
+              className="w-10 h-10 bg-indigo-600 active:bg-indigo-700 text-white font-bold rounded-lg text-sm flex items-center justify-center shadow"
+            >
+              -{stepRot}°
+            </button>
+            <span className="w-14 text-center font-mono text-sm bg-slate-950 py-1 rounded border border-slate-700">
+              {rotY}°
+            </span>
+            <button
+              onClick={() => adjustRotation(stepRot)}
+              className="w-10 h-10 bg-indigo-600 active:bg-indigo-700 text-white font-bold rounded-lg text-sm flex items-center justify-center shadow"
+            >
+              +{stepRot}°
+            </button>
+          </div>
+        </div>
+
+        {/* Botão de Fixar no Personagem */}
+        <div className="pt-2">
+          <button
+            onClick={toggleAttach}
+            className={`w-full py-3 px-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2 ${
+              isAttached
+                ? 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+            }`}
+          >
+            <span>{isAttached ? '🔒 Armamento Fixado' : '🔓 Fixar no Personagem'}</span>
           </button>
         </div>
 
-        <button onClick={() => managerRef.current?.exportGLB()} disabled={!characterLoaded} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 rounded text-xs font-semibold">
-          💾 Baixar GLB
-        </button>
-      </header>
-
-      {/* Área Central */}
-      <div className="flex-1 flex relative">
-        {/* Viewport 3D */}
-        <div ref={containerRef} className="flex-1 w-full h-full" />
-
-        {/* Modal de Animações */}
-        {showAnimMenu && (
-          <div className="absolute top-4 left-4 z-20 w-56 bg-[#071220]/95 border border-[#1e3a5f] rounded-lg p-3 shadow-xl space-y-2 text-xs">
-            <div className="font-bold text-blue-300 border-b border-[#1e3a5f] pb-1 flex justify-between">
-              <span>Animações</span>
-              <button onClick={() => setShowAnimMenu(false)}>✕</button>
-            </div>
-            <div className="max-h-40 overflow-y-auto space-y-1">
-              {animations.map((a) => (
-                <button
-                  key={a.name}
-                  onClick={() => {
-                    managerRef.current?.playAnimation(a);
-                    setIsPlaying(true);
-                  }}
-                  className="w-full text-left p-1.5 bg-[#142843] hover:bg-blue-600 rounded"
-                >
-                  ▶ {a.name || 'Animação'}
-                </button>
-              ))}
-            </div>
-            {isPlaying && (
-              <button
-                onClick={() => {
-                  managerRef.current?.stopAnimation();
-                  setIsPlaying(false);
-                }}
-                className="w-full py-1 bg-red-600 hover:bg-red-500 rounded font-semibold"
-              >
-                ⏹ Parar
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Painel de Propriedades Lateral */}
-        <aside className="w-80 bg-[#071220] border-l border-[#1e3a5f] p-4 space-y-4 overflow-y-auto text-xs">
-          {/* Brilho */}
-          <div className="bg-[#0f2035] p-3 rounded-lg border border-[#1e3a5f] space-y-2">
-            <label className="text-blue-300 font-semibold block">Controle de Brilho</label>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  const b = Math.max(0.2, brightness - 0.2);
-                  setBrightness(b);
-                  managerRef.current?.setBrightness(b);
-                }}
-                className="flex-1 py-1 bg-[#142843] hover:bg-[#1e3a5f] rounded"
-              >
-                − Brilho
-              </button>
-              <span className="font-mono text-blue-400">{brightness.toFixed(1)}</span>
-              <button
-                onClick={() => {
-                  const b = brightness + 0.2;
-                  setBrightness(b);
-                  managerRef.current?.setBrightness(b);
-                }}
-                className="flex-1 py-1 bg-[#142843] hover:bg-[#1e3a5f] rounded"
-              >
-                + Brilho
-              </button>
-            </div>
-          </div>
-
-          {/* Tamanho Personagem */}
-          {characterLoaded && (
-            <div className="bg-[#0f2035] p-3 rounded-lg border border-[#1e3a5f] space-y-2">
-              <div className="flex justify-between font-semibold text-blue-300">
-                <span>Tamanho Personagem</span>
-                <span className="text-blue-400">{charScale}%</span>
-              </div>
-              <input
-                type="range"
-                min="10"
-                max="300"
-                value={charScale}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setCharScale(val);
-                  managerRef.current?.setCharacterScale(val);
-                }}
-                className="w-full accent-blue-500"
-              />
-            </div>
-          )}
-
-          {/* Form de Anexação ao Osso */}
-          {pendingProp && (
-            <div className="bg-amber-950/40 border border-amber-600/50 p-3 rounded-lg space-y-2">
-              <div className="font-semibold text-amber-300">Anexar: {pendingProp.name}</div>
-              <select
-                value={selectedBone}
-                onChange={(e) => setSelectedBone(e.target.value)}
-                className="w-full bg-[#071220] border border-amber-600/50 rounded p-1 text-amber-200"
-              >
-                <option value="">-- Selecione o Osso --</option>
-                {bones.map((b) => (
-                  <option key={b.uuid} value={b.name}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-              <button onClick={confirmAttach} disabled={!selectedBone} className="w-full py-1.5 bg-emerald-600 disabled:opacity-40 rounded font-semibold">
-                Confirmar Anexação
-              </button>
-            </div>
-          )}
-
-          {/* Objetos Ativos */}
-          {propsList.length > 0 && (
-            <div className="bg-[#0f2035] p-3 rounded-lg border border-[#1e3a5f] space-y-2">
-              <label className="text-blue-300 font-semibold block">Objetos na Cena</label>
-              {propsList.map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => setSelectedPropId(p.id)}
-                  className={`p-2 rounded cursor-pointer border ${
-                    selectedPropId === p.id ? 'bg-blue-600/40 border-blue-400' : 'bg-[#142843] border-transparent'
-                  }`}
-                >
-                  <div className="font-semibold">{p.name}</div>
-                  <div className="text-[10px] text-blue-400">Osso: {p.boneName}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Ajuste Fino do Objeto Selecionado */}
-          {selectedProp && (
-            <div className="bg-[#0f2035] p-3 rounded-lg border border-[#1e3a5f] space-y-3">
-              <div className="font-semibold text-blue-300 border-b border-[#1e3a5f] pb-1">
-                Ajustar: {selectedProp.name}
-              </div>
-
-              <div>
-                <label className="text-blue-300">Tamanho ({selectedProp.scale}%)</label>
-                <input
-                  type="range"
-                  min="10"
-                  max="300"
-                  value={selectedProp.scale}
-                  onChange={(e) => updateTransform(selectedProp.id, 'scale', Number(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-              </div>
-
-              {/* Posições */}
-              {(['posX', 'posY', 'posZ'] as const).map((axis) => (
-                <div key={axis}>
-                  <label className="text-blue-300">Posição {axis.replace('pos', '').toUpperCase()}</label>
-                  <input
-                    type="range"
-                    min="-2"
-                    max="2"
-                    step="0.01"
-                    value={selectedProp[axis]}
-                    onChange={(e) => updateTransform(selectedProp.id, axis, parseFloat(e.target.value))}
-                    className="w-full accent-blue-500"
-                  />
-                </div>
-              ))}
-
-              {/* Rotações */}
-              {(['rotX', 'rotY', 'rotZ'] as const).map((axis) => (
-                <div key={axis}>
-                  <label className="text-blue-300">Rotação {axis.replace('rot', '').toUpperCase()} (°)</label>
-                  <input
-                    type="range"
-                    min="-180"
-                    max="180"
-                    value={selectedProp[axis]}
-                    onChange={(e) => updateTransform(selectedProp.id, axis, Number(e.target.value))}
-                    className="w-full accent-blue-500"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </aside>
       </div>
     </div>
   );
