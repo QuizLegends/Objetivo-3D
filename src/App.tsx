@@ -52,7 +52,7 @@ export default function App() {
     }
   }, []);
 
-  // 1. Upload do Personagem
+  // Upload do Personagem
   const handleCharUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && managerRef.current) {
@@ -64,7 +64,7 @@ export default function App() {
     }
   };
 
-  // 2. Upload do Objeto / Armamento (Adiciona Solto para Edição Inicial)
+  // Upload do Objeto / Armamento
   const handlePropUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && managerRef.current) {
@@ -86,57 +86,51 @@ export default function App() {
     }
   };
 
-  // 3. Atualização Numérica da Transformação (Livre)
-  const updateTransform = (id: string, key: keyof PropItem, delta: number) => {
+  // Atualização Numérica (Através do botão ou digitando direto no input)
+  const setTransformValue = (id: string, key: keyof PropItem, value: number) => {
     setPropsList((prev) =>
       prev.map((p) => {
         if (p.id !== id) return p;
 
-        let newVal = (p[key] as number) + delta;
+        let newVal = value;
         if (key === 'scale') {
-          newVal = Math.max(5, newVal); // Tamanho mínimo de 5%
-        } else if (key.startsWith('pos')) {
-          newVal = parseFloat(newVal.toFixed(2));
+          newVal = Math.max(1, newVal);
         } else if (key.startsWith('rot')) {
-          newVal = (newVal % 360 + 360) % 360; // Mantém entre 0 e 360°
+          newVal = (newVal % 360 + 360) % 360;
         }
 
         const updated = { ...p, [key]: newVal };
 
-        // Aplica transformações no Three.js
+        // Aplica transformações
         const s = updated.scale / 100;
         updated.object.scale.set(s, s, s);
-
-        if (!updated.isAttached) {
-          updated.object.position.set(updated.posX, updated.posY, updated.posZ);
-          updated.object.rotation.set(
-            THREE.MathUtils.degToRad(updated.rotX),
-            THREE.MathUtils.degToRad(updated.rotY),
-            THREE.MathUtils.degToRad(updated.rotZ)
-          );
-        } else {
-          // Se já estiver fixado, ajusta a matriz relativa ao osso
-          updated.object.position.set(updated.posX, updated.posY, updated.posZ);
-          updated.object.rotation.set(
-            THREE.MathUtils.degToRad(updated.rotX),
-            THREE.MathUtils.degToRad(updated.rotY),
-            THREE.MathUtils.degToRad(updated.rotZ)
-          );
-        }
+        updated.object.position.set(updated.posX, updated.posY, updated.posZ);
+        updated.object.rotation.set(
+          THREE.MathUtils.degToRad(updated.rotX),
+          THREE.MathUtils.degToRad(updated.rotY),
+          THREE.MathUtils.degToRad(updated.rotZ)
+        );
 
         return updated;
       })
     );
   };
 
-  // 4. FIXAR DEFINITIVAMENTE NO OSSO (Por Último)
+  const updateTransformDelta = (id: string, key: keyof PropItem, delta: number) => {
+    const prop = propsList.find((p) => p.id === id);
+    if (!prop) return;
+    const currentVal = (prop[key] as number) || 0;
+    const finalVal = parseFloat((currentVal + delta).toFixed(2));
+    setTransformValue(id, key, finalVal);
+  };
+
+  // Executar Fixação do Objeto no Osso do Personagem
   const confirmFinalAttach = (propId: string) => {
     if (!targetBoneForSelect || !managerRef.current) return;
-    
+
     const prop = propsList.find((p) => p.id === propId);
     if (!prop) return;
 
-    // Conecta o objeto no osso mantendo a posição e rotação calculadas
     const success = managerRef.current.attachToBone(prop.object, targetBoneForSelect);
 
     if (success) {
@@ -150,7 +144,7 @@ export default function App() {
     }
   };
 
-  // Desfixar Objeto para editar novamente
+  // Soltar Objeto do Osso
   const detachProp = (propId: string) => {
     const prop = propsList.find((p) => p.id === propId);
     if (!prop || !managerRef.current) return;
@@ -235,10 +229,10 @@ export default function App() {
           </div>
         )}
 
-        {/* Painel Inferior de Controles (Totalmente Otimizado Mobile) */}
+        {/* Painel Inferior de Controles */}
         <aside className="w-full md:w-80 bg-[#071220] border-t md:border-t-0 md:border-l border-[#1e3a5f] p-3 space-y-3 overflow-y-auto max-h-[50vh] md:max-h-none text-xs">
           
-          {/* Luz e Escala Geral do Modelo */}
+          {/* Luz e Tamanho do Personagem */}
           <div className="bg-[#0f2035] p-2.5 rounded-lg border border-[#1e3a5f] space-y-2">
             <div className="flex justify-between items-center text-blue-300 font-semibold">
               <span>Brilho do Cenário</span>
@@ -253,7 +247,17 @@ export default function App() {
                 >
                   −
                 </button>
-                <span className="font-mono text-blue-400">{brightness.toFixed(1)}</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={brightness}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setBrightness(val);
+                    managerRef.current?.setBrightness(val);
+                  }}
+                  className="w-12 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f] text-cyan-300 focus:outline-none"
+                />
                 <button
                   onClick={() => {
                     const b = brightness + 0.2;
@@ -281,7 +285,16 @@ export default function App() {
                   >
                     −
                   </button>
-                  <span className="font-mono text-blue-400">{charScale}%</span>
+                  <input
+                    type="number"
+                    value={charScale}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setCharScale(val);
+                      managerRef.current?.setCharacterScale(val);
+                    }}
+                    className="w-12 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f] text-cyan-300 focus:outline-none"
+                  />
                   <button
                     onClick={() => {
                       const s = charScale + 10;
@@ -320,7 +333,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Painel de Edição Numérica + Botão de Fixar por Último */}
+          {/* Controles de Edição Numérica + Botão de Fixar */}
           {selectedProp && (
             <div className="bg-[#0f2035] p-3 rounded-lg border border-[#1e3a5f] space-y-3">
               <div className="font-bold text-blue-300 border-b border-[#1e3a5f] pb-1 flex justify-between items-center">
@@ -332,25 +345,28 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Controles com Botões + e - */}
+              {/* Controles Numéricos com Caixas Editáveis */}
               <div className="space-y-2">
 
-                {/* 1. TAMANHO DO OBJETO (Numérico) */}
+                {/* 1. TAMANHO DO OBJETO */}
                 <div className="flex items-center justify-between bg-[#142843] p-1.5 rounded border border-[#1e3a5f]">
-                  <span className="font-medium text-slate-200">Tamanho Objeto</span>
-                  <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-200">Tamanho Objeto (%)</span>
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'scale', -10)}
-                      className="w-8 h-8 bg-amber-600 active:bg-amber-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'scale', -10)}
+                      className="w-7 h-7 bg-amber-600 active:bg-amber-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       −
                     </button>
-                    <span className="w-12 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f]">
-                      {selectedProp.scale}%
-                    </span>
+                    <input
+                      type="number"
+                      value={selectedProp.scale}
+                      onChange={(e) => setTransformValue(selectedProp.id, 'scale', parseFloat(e.target.value) || 0)}
+                      className="w-14 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f] text-amber-300 focus:outline-none focus:border-amber-500"
+                    />
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'scale', 10)}
-                      className="w-8 h-8 bg-amber-600 active:bg-amber-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'scale', 10)}
+                      className="w-7 h-7 bg-amber-600 active:bg-amber-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       +
                     </button>
@@ -360,19 +376,23 @@ export default function App() {
                 {/* 2. Cima / Baixo */}
                 <div className="flex items-center justify-between bg-[#142843] p-1.5 rounded border border-[#1e3a5f]">
                   <span className="font-medium text-slate-200">Para Cima / Baixo</span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'posY', -0.05)}
-                      className="w-8 h-8 bg-rose-600 active:bg-rose-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'posY', -0.05)}
+                      className="w-7 h-7 bg-rose-600 active:bg-rose-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       −
                     </button>
-                    <span className="w-12 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f]">
-                      {selectedProp.posY.toFixed(2)}
-                    </span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={selectedProp.posY}
+                      onChange={(e) => setTransformValue(selectedProp.id, 'posY', parseFloat(e.target.value) || 0)}
+                      className="w-14 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f] text-emerald-300 focus:outline-none focus:border-emerald-500"
+                    />
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'posY', 0.05)}
-                      className="w-8 h-8 bg-emerald-600 active:bg-emerald-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'posY', 0.05)}
+                      className="w-7 h-7 bg-emerald-600 active:bg-emerald-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       +
                     </button>
@@ -381,20 +401,24 @@ export default function App() {
 
                 {/* 3. Para Esquerda / Direita */}
                 <div className="flex items-center justify-between bg-[#142843] p-1.5 rounded border border-[#1e3a5f]">
-                  <span className="font-medium text-slate-200">Para Esquerda / Direita</span>
-                  <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-200">Esquerda / Direita</span>
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'posX', -0.05)}
-                      className="w-8 h-8 bg-rose-600 active:bg-rose-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'posX', -0.05)}
+                      className="w-7 h-7 bg-rose-600 active:bg-rose-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       −
                     </button>
-                    <span className="w-12 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f]">
-                      {selectedProp.posX.toFixed(2)}
-                    </span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={selectedProp.posX}
+                      onChange={(e) => setTransformValue(selectedProp.id, 'posX', parseFloat(e.target.value) || 0)}
+                      className="w-14 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f] text-emerald-300 focus:outline-none focus:border-emerald-500"
+                    />
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'posX', 0.05)}
-                      className="w-8 h-8 bg-emerald-600 active:bg-emerald-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'posX', 0.05)}
+                      className="w-7 h-7 bg-emerald-600 active:bg-emerald-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       +
                     </button>
@@ -403,42 +427,49 @@ export default function App() {
 
                 {/* 4. Para Frente / Trás */}
                 <div className="flex items-center justify-between bg-[#142843] p-1.5 rounded border border-[#1e3a5f]">
-                  <span className="font-medium text-slate-200">Para Frente / Trás</span>
-                  <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-200">Frente / Trás</span>
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'posZ', -0.05)}
-                      className="w-8 h-8 bg-rose-600 active:bg-rose-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'posZ', -0.05)}
+                      className="w-7 h-7 bg-rose-600 active:bg-rose-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       −
                     </button>
-                    <span className="w-12 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f]">
-                      {selectedProp.posZ.toFixed(2)}
-                    </span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={selectedProp.posZ}
+                      onChange={(e) => setTransformValue(selectedProp.id, 'posZ', parseFloat(e.target.value) || 0)}
+                      className="w-14 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f] text-emerald-300 focus:outline-none focus:border-emerald-500"
+                    />
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'posZ', 0.05)}
-                      className="w-8 h-8 bg-emerald-600 active:bg-emerald-700 font-bold rounded text-base flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'posZ', 0.05)}
+                      className="w-7 h-7 bg-emerald-600 active:bg-emerald-700 font-bold rounded text-base flex items-center justify-center text-white"
                     >
                       +
                     </button>
                   </div>
                 </div>
 
-                {/* 5. Girar 360 Graus */}
+                {/* 5. Rotacionar 360 Graus */}
                 <div className="flex items-center justify-between bg-[#142843] p-1.5 rounded border border-[#1e3a5f]">
-                  <span className="font-medium text-slate-200">Rotacionar 360°</span>
-                  <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-200">Rotacionar (360°)</span>
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'rotY', -15)}
-                      className="w-8 h-8 bg-indigo-600 active:bg-indigo-700 font-bold rounded text-xs flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'rotY', -15)}
+                      className="w-7 h-7 bg-indigo-600 active:bg-indigo-700 font-bold rounded text-xs flex items-center justify-center text-white"
                     >
                       -15°
                     </button>
-                    <span className="w-12 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f]">
-                      {selectedProp.rotY}°
-                    </span>
+                    <input
+                      type="number"
+                      value={selectedProp.rotY}
+                      onChange={(e) => setTransformValue(selectedProp.id, 'rotY', parseFloat(e.target.value) || 0)}
+                      className="w-14 text-center font-mono text-xs bg-[#071220] py-1 rounded border border-[#1e3a5f] text-indigo-300 focus:outline-none focus:border-indigo-500"
+                    />
                     <button
-                      onClick={() => updateTransform(selectedProp.id, 'rotY', 15)}
-                      className="w-8 h-8 bg-indigo-600 active:bg-indigo-700 font-bold rounded text-xs flex items-center justify-center text-white"
+                      onClick={() => updateTransformDelta(selectedProp.id, 'rotY', 15)}
+                      className="w-7 h-7 bg-indigo-600 active:bg-indigo-700 font-bold rounded text-xs flex items-center justify-center text-white"
                     >
                       +15°
                     </button>
@@ -446,17 +477,17 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SEÇÃO FINAL: BOTÃO DE FIXAR NO OSSO (APÓS TODA A EDIÇÃO) */}
-              <div className="pt-2 border-t border-[#1e3a5f] space-y-2">
+              {/* ÁREA DE FIXAÇÃO NO OSSO (SEMPRE VISÍVEL ABAIXO DOS CONTROLES) */}
+              <div className="pt-3 border-t border-[#1e3a5f] space-y-2">
                 {!selectedProp.isAttached ? (
                   <>
                     <label className="text-amber-300 font-semibold block text-[11px]">
-                      Selecione onde fixar este objeto:
+                      Selecione onde fixar o objeto:
                     </label>
                     <select
                       value={targetBoneForSelect}
                       onChange={(e) => setTargetBoneForSelect(e.target.value)}
-                      className="w-full bg-[#071220] border border-[#1e3a5f] rounded p-2 text-slate-200 font-medium"
+                      className="w-full bg-[#071220] border border-[#1e3a5f] rounded p-2 text-slate-200 font-medium text-xs focus:outline-none"
                     >
                       <option value="">-- Escolher Mão / Osso --</option>
                       {bones.map((b) => (
@@ -471,7 +502,7 @@ export default function App() {
                       disabled={!targetBoneForSelect}
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-40 rounded-lg font-bold text-white shadow-lg text-xs uppercase tracking-wide transition"
                     >
-                      🔒 FIXAR NO PERSONAGEM (FINALIZAR)
+                      🔒 FIXAR NO PERSONAGEM
                     </button>
                   </>
                 ) : (
