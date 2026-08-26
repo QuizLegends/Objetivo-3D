@@ -66,9 +66,12 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleMovePropY = (delta: number) => {
-    threeManagerRef.current?.movePropY(delta);
-  };
+  // Funções de manipulação do objeto
+  const handleMoveX = (delta: number) => threeManagerRef.current?.movePropX(delta);
+  const handleMoveY = (delta: number) => threeManagerRef.current?.movePropY(delta);
+  const handleMoveZ = (delta: number) => threeManagerRef.current?.movePropZ(delta);
+  const handleScaleProp = (factor: number) => threeManagerRef.current?.scaleProp(factor);
+  const handleRotateProp = (axis: 'x' | 'y' | 'z', deg: number) => threeManagerRef.current?.rotateProp(axis, deg);
 
   const handlePlayAnim = (anim: THREE.AnimationClip) => {
     threeManagerRef.current?.playAnimation(anim);
@@ -118,17 +121,42 @@ export const App: React.FC = () => {
           <input type="file" accept="image/png, image/jpeg" onChange={handlePropTextureUpload} style={styles.input} />
         </div>
 
-        {/* Ajustes de Posição do Objeto (Cima / Baixo) */}
+        {/* Ajustes do Objeto */}
         {currentProp && (
           <div style={styles.formGroup}>
-            <label style={styles.label}>Ajuste de Posição do Objeto:</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={() => handleMovePropY(0.05)} style={{ ...styles.btn, ...styles.btnMove }}>
-                ⬆️ Cima
-              </button>
-              <button type="button" onClick={() => handleMovePropY(-0.05)} style={{ ...styles.btn, ...styles.btnMove }}>
-                ⬇️ Baixo
-              </button>
+            <h4 style={styles.subtitle}>Ajustes do Objeto</h4>
+            
+            {/* Movimentação */}
+            <label style={styles.subLabel}>Posição:</label>
+            <div style={styles.btnRow}>
+              <button type="button" onClick={() => handleMoveY(0.05)} style={{ ...styles.btn, ...styles.btnMove }}>⬆️ Cima</button>
+              <button type="button" onClick={() => handleMoveY(-0.05)} style={{ ...styles.btn, ...styles.btnMove }}>⬇️ Baixo</button>
+            </div>
+            <div style={styles.btnRow}>
+              <button type="button" onClick={() => handleMoveX(-0.05)} style={{ ...styles.btn, ...styles.btnMove }}>⬅️ Esquerda</button>
+              <button type="button" onClick={() => handleMoveX(0.05)} style={{ ...styles.btn, ...styles.btnMove }}>➡️ Direita</button>
+            </div>
+            <div style={styles.btnRow}>
+              <button type="button" onClick={() => handleMoveZ(0.05)} style={{ ...styles.btn, ...styles.btnMove }}>↗️ Frente</button>
+              <button type="button" onClick={() => handleMoveZ(-0.05)} style={{ ...styles.btn, ...styles.btnMove }}>↙️ Trás</button>
+            </div>
+
+            {/* Escala */}
+            <label style={styles.subLabel}>Tamanho (Escala):</label>
+            <div style={styles.btnRow}>
+              <button type="button" onClick={() => handleScaleProp(1.1)} style={{ ...styles.btn, ...styles.btnScale }}>🔍+ Aumentar</button>
+              <button type="button" onClick={() => handleScaleProp(0.9)} style={{ ...styles.btn, ...styles.btnScale }}>🔍- Diminuir</button>
+            </div>
+
+            {/* Rotação */}
+            <label style={styles.subLabel}>Rotação (Eixos):</label>
+            <div style={styles.btnRow}>
+              <button type="button" onClick={() => handleRotateProp('y', 15)} style={{ ...styles.btn, ...styles.btnRotate }}>🔄 Giro Y (+15°)</button>
+              <button type="button" onClick={() => handleRotateProp('y', -15)} style={{ ...styles.btn, ...styles.btnRotate }}>🔄 Giro Y (-15°)</button>
+            </div>
+            <div style={styles.btnRow}>
+              <button type="button" onClick={() => handleRotateProp('x', 15)} style={{ ...styles.btn, ...styles.btnRotate }}>↩️ Inclin X (+15°)</button>
+              <button type="button" onClick={() => handleRotateProp('z', 15)} style={{ ...styles.btn, ...styles.btnRotate }}>↪️ Inclin Z (+15°)</button>
             </div>
           </div>
         )}
@@ -242,8 +270,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 'bold',
   },
   subtitle: {
-    marginBottom: '12px',
-    fontSize: '15px',
+    marginTop: '12px',
+    marginBottom: '8px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    color: '#38bdf8',
+  },
+  subLabel: {
+    display: 'block',
+    fontSize: '12px',
+    marginTop: '6px',
+    marginBottom: '4px',
+    color: '#cbd5e1',
   },
   formGroup: {
     marginBottom: '16px',
@@ -281,6 +319,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '100%',
     accentColor: '#38bdf8',
   },
+  btnRow: {
+    display: 'flex',
+    gap: '6px',
+    marginBottom: '4px',
+  },
   animList: {
     maxHeight: '150px',
     overflowY: 'auto',
@@ -288,12 +331,12 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   btn: {
     width: '100%',
-    padding: '10px',
-    marginTop: '4px',
+    padding: '8px',
     border: 'none',
     borderRadius: '4px',
     fontWeight: 'bold',
     cursor: 'pointer',
+    fontSize: '12px',
     boxSizing: 'border-box',
   },
   btnMove: {
@@ -301,9 +344,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#fff',
     flex: 1,
   },
+  btnScale: {
+    backgroundColor: '#d97706',
+    color: '#fff',
+    flex: 1,
+  },
+  btnRotate: {
+    backgroundColor: '#4f46e5',
+    color: '#fff',
+    flex: 1,
+  },
   btnAttach: {
     backgroundColor: '#10b981',
     color: '#fff',
+    marginTop: '4px',
+    padding: '10px',
   },
   btnAnim: {
     backgroundColor: '#3b82f6',
@@ -313,6 +368,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   btnStop: {
     backgroundColor: '#ef4444',
     color: '#fff',
+    padding: '10px',
   },
   btnExport: {
     backgroundColor: '#8b5cf6',
