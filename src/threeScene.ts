@@ -1,325 +1,263 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ThreeManager } from './threeScene';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
-export const App: React.FC = () => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const threeManagerRef = useRef<ThreeManager | null>(null);
+export class ThreeManager {
+  private container: HTMLElement;
+  private scene: THREE.Scene;
+  private camera: THREE.PerspectiveCamera;
+  private renderer: THREE.WebGLRenderer;
+  private controls: OrbitControls;
+  private dirLight: THREE.DirectionalLight;
+  private ambLight: THREE.AmbientLight;
 
-  const [bones, setBones] = useState<THREE.Bone[]>([]);
-  const [animations, setAnimations] = useState<THREE.AnimationClip[]>([]);
-  const [selectedBone, setSelectedBone] = useState<string>('');
-  const [currentProp, setCurrentProp] = useState<THREE.Object3D | null>(null);
-  const [brightness, setBrightness] = useState<number>(1.5);
-  const [scale, setScale] = useState<number>(100);
+  private mixer: THREE.AnimationMixer | null = null;
+  private clock: THREE.Clock;
+  private currentAction: THREE.AnimationAction | null = null;
 
-  useEffect(() => {
-    if (containerRef.current && !threeManagerRef.current) {
-      threeManagerRef.current = new ThreeManager(containerRef.current);
+  private characterModel: THREE.Object3D | null = null;
+  private skeleton: THREE.Skeleton | null = null;
+  private currentProp: THREE.Object3D | null = null;
+  
+  private characterAnimations: THREE.AnimationClip[] = [];
 
-      const handleResize = () => {
-        if (containerRef.current && threeManagerRef.current) {
-          threeManagerRef.current.resize(
-            containerRef.current.clientWidth,
-            containerRef.current.clientHeight
-          );
+  constructor(container: HTMLElement) {
+    this.container = container;
+
+    // Configuração da Cena
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x071220);
+
+    // Câmera
+    const aspect = container.clientWidth / container.clientHeight || 1;
+    this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+    this.camera.position.set(0, 1.5, 3);
+
+    // Renderizador
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.setSize(container.clientWidth, container.clientHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    container.appendChild(this.renderer.domElement);
+
+    // Controles Orbitais
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.target.set(0, 1, 0);
+
+    // Iluminação
+    this.ambLight = new THREE.AmbientLight(0xffffff, 1.0);
+    this.scene.add(this.ambLight);
+
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.dirLight.position.set(2, 4, 3);
+    this.dirLight.castShadow = true;
+    this.scene.add(this.dirLight);
+
+    // Grade Auxiliar
+    const grid = new THREE.GridHelper(10, 10, 0x1e293b, 0x0f172a);
+    this.scene.add(grid);
+
+    this.clock = new THREE.Clock();
+    this.animate();
+  }
+
+  // Loop de Renderização & Atualização das Animações
+  private animate = () => {
+    requestAnimationFrame(this.animate);
+    const delta = this.clock.getDelta();
+    if (this.mixer) {
+      this.mixer.update(delta);
+    }
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  };
+
+  // Carregar Personagem (FBX ou GLB/GLTF)
+  public loadCharacter(
+    file: File,
+    onLoaded: (bones: THREE.Bone[], anims: THREE.AnimationClip[]) => void
+  ) {
+    const url = URL.createObjectURL(file);
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
+    const handleModelLoad = (model: THREE.Object3D, animations: THREE.AnimationClip[]) => {
+      if (this.characterModel) {
+        this.scene.remove(this.characterModel);
+      }
+
+      this.characterModel = model;
+      this.scene.add(model);
+      
+      this.characterAnimations = animations;
+      this.mixer = new THREE.AnimationMixer(model);
+
+      const bones: THREE.Bone[] = [];
+      model.traverse((child) => {
+        if ((child as THREE.Bone).isBone) {
+          bones.push(child as THREE.Bone);
         }
-      };
-
-      window.addEventListener('resize', handleResize);
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        threeManagerRef.current?.dispose();
-      };
-    }
-  }, []);
-
-  const handleCharacterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && threeManagerRef.current) {
-      threeManagerRef.current.loadCharacter(file, (loadedBones, loadedAnims) => {
-        setBones(loadedBones);
-        setAnimations(loadedAnims);
       });
-    }
-  };
 
-  const handlePropUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && threeManagerRef.current) {
-      threeManagerRef.current.loadProp(file, (propObj) => {
-        setCurrentProp(propObj);
+      onLoaded(bones, animations);
+      URL.revokeObjectURL(url);
+    };
+
+    if (ext === 'fbx') {
+      const loader = new FBXLoader();
+      loader.load(url, (fbx) => handleModelLoad(fbx, fbx.animations || []));
+    } else if (ext === 'glb' || ext === 'gltf') {
+      const loader = new GLTFLoader();
+      loader.load(url, (gltf) => handleModelLoad(gltf.scene, gltf.animations || []));
+    }
+  }
+
+  // Carregar Objeto / Arma (FBX ou GLB/GLTF)
+  public loadProp(file: File, onLoaded: (prop: THREE.Object3D) => void) {
+    const url = URL.createObjectURL(file);
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
+    const handlePropLoad = (prop: THREE.Object3D) => {
+      this.currentProp = prop;
+      onLoaded(prop);
+      URL.revokeObjectURL(url);
+    };
+
+    if (ext === 'fbx') {
+      const loader = new FBXLoader();
+      loader.load(url, (fbx) => handlePropLoad(fbx));
+    } else if (ext === 'glb' || ext === 'gltf') {
+      const loader = new GLTFLoader();
+      loader.load(url, (gltf) => handlePropLoad(gltf.scene));
+    }
+  }
+
+  // Aplicar Textura customizada no Objeto carregado
+  public applyPropTexture(file: File) {
+    if (!this.currentProp) return;
+    const url = URL.createObjectURL(file);
+    const textureLoader = new THREE.TextureLoader();
+
+    textureLoader.load(url, (texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      this.currentProp?.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          mesh.material = new THREE.MeshStandardMaterial({ map: texture });
+        }
       });
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // Anexar Objeto a um Osso específico do esqueleto
+  public attachToBone(prop: THREE.Object3D, boneName: string) {
+    if (!this.characterModel) return;
+
+    let targetBone: THREE.Object3D | null = null;
+    this.characterModel.traverse((child) => {
+      if (child.name === boneName) {
+        targetBone = child;
+      }
+    });
+
+    if (targetBone) {
+      (targetBone as THREE.Object3D).add(prop);
+      prop.position.set(0, 0, 0);
+      prop.rotation.set(0, 0, 0);
     }
-  };
+  }
 
-  const handlePropTextureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && threeManagerRef.current) {
-      threeManagerRef.current.applyPropTexture(file);
+  // Mover Objeto no eixo Y (Cima / Baixo)
+  public movePropY(delta: number) {
+    if (this.currentProp) {
+      this.currentProp.position.y += delta;
     }
-  };
+  }
 
-  const handleAttachProp = () => {
-    if (threeManagerRef.current && currentProp && selectedBone) {
-      threeManagerRef.current.attachToBone(currentProp, selectedBone);
+  // Tocar Animação
+  public playAnimation(clip: THREE.AnimationClip) {
+    if (!this.mixer) return;
+    if (this.currentAction) {
+      this.currentAction.stop();
     }
-  };
+    this.currentAction = this.mixer.clipAction(clip);
+    this.currentAction.play();
+  }
 
-  const handleMovePropY = (delta: number) => {
-    threeManagerRef.current?.movePropY(delta);
-  };
+  // Parar Animação
+  public stopAnimation() {
+    if (this.currentAction) {
+      this.currentAction.stop();
+      this.currentAction = null;
+    }
+  }
 
-  const handlePlayAnim = (anim: THREE.AnimationClip) => {
-    threeManagerRef.current?.playAnimation(anim);
-  };
+  // Alterar Brilho da Iluminação
+  public setBrightness(val: number) {
+    this.dirLight.intensity = val;
+    this.ambLight.intensity = val * 0.7;
+  }
 
-  const handleStopAnim = () => {
-    threeManagerRef.current?.stopAnimation();
-  };
+  // Alterar Escala do Personagem
+  public setCharacterScale(percent: number) {
+    if (!this.characterModel) return;
+    const s = percent / 100;
+    this.characterModel.scale.set(s, s, s);
+  }
 
-  const handleBrightnessChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setBrightness(val);
-    threeManagerRef.current?.setBrightness(val);
-  };
+  // Exportar Modelo para arquivo .GLB
+  public exportGLB() {
+    if (!this.characterModel) {
+      alert('Nenhum modelo carregado para exportar.');
+      return;
+    }
 
-  const handleScaleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value, 10);
-    setScale(val);
-    threeManagerRef.current?.setCharacterScale(val);
-  };
+    const exporter = new GLTFExporter();
+    exporter.parse(
+      this.characterModel,
+      (gltf) => {
+        let blob: Blob;
 
-  const handleExportGLB = () => {
-    threeManagerRef.current?.exportGLB();
-  };
+        if (gltf instanceof ArrayBuffer) {
+          blob = new Blob([gltf], { type: 'application/octet-stream' });
+        } else {
+          const output = JSON.stringify(gltf, null, 2);
+          blob = new Blob([output], { type: 'application/json' });
+        }
 
-  return (
-    <div style={styles.appContainer}>
-      {/* Container Principal do Viewport 3D */}
-      <div ref={containerRef} style={styles.canvasContainer} />
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'modelo_editado.glb';
+        link.click();
 
-      {/* Painel Lateral Estilizado */}
-      <div style={styles.sidebar}>
-        <h3 style={styles.title}>Controles 3D</h3>
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      },
+      (error) => {
+        console.error('Erro ao exportar GLB:', error);
+      },
+      { 
+        binary: true,
+        embedImages: true,
+        animations: this.characterAnimations 
+      }
+    );
+  }
 
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Personagem (FBX/GLB):</label>
-          <input type="file" accept=".fbx,.glb,.gltf" onChange={handleCharacterUpload} style={styles.input} />
-        </div>
+  // Redimensionar Canvas
+  public resize(width: number, height: number) {
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height);
+  }
 
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Objeto / Arma (FBX/GLB):</label>
-          <input type="file" accept=".fbx,.glb,.gltf" onChange={handlePropUpload} style={styles.input} />
-        </div>
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Textura do Objeto (PNG/JPG):</label>
-          <input type="file" accept="image/png, image/jpeg" onChange={handlePropTextureUpload} style={styles.input} />
-        </div>
-
-        {/* Ajustes de Posição do Objeto (Cima / Baixo) */}
-        {currentProp && (
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Ajuste de Posição do Objeto:</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={() => handleMovePropY(0.05)} style={{ ...styles.btn, ...styles.btnMove }}>
-                ⬆️ Cima
-              </button>
-              <button type="button" onClick={() => handleMovePropY(-0.05)} style={{ ...styles.btn, ...styles.btnMove }}>
-                ⬇️ Baixo
-              </button>
-            </div>
-          </div>
-        )}
-
-        {bones.length > 0 && (
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Selecione o Osso:</label>
-            <select
-              value={selectedBone}
-              onChange={(e) => setSelectedBone(e.target.value)}
-              style={styles.select}
-            >
-              <option value="">Selecione...</option>
-              {bones.map((b) => (
-                <option key={b.uuid} value={b.name}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={handleAttachProp} style={{ ...styles.btn, ...styles.btnAttach }}>
-              Anexar Objeto ao Osso
-            </button>
-          </div>
-        )}
-
-        {animations.length > 0 && (
-          <div style={styles.formGroup}>
-            <h4 style={styles.subtitle}>Animações</h4>
-            <div style={styles.animList}>
-              {animations.map((anim, idx) => (
-                <button
-                  type="button"
-                  key={anim.uuid || idx}
-                  onClick={() => handlePlayAnim(anim)}
-                  style={{ ...styles.btn, ...styles.btnAnim }}
-                >
-                  ▶️ {anim.name || `Animação ${idx + 1}`}
-                </button>
-              ))}
-            </div>
-            <button type="button" onClick={handleStopAnim} style={{ ...styles.btn, ...styles.btnStop }}>
-              ⏹️ Parar Animação
-            </button>
-          </div>
-        )}
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>
-            Brilho: <span style={styles.spanVal}>{brightness}</span>
-          </label>
-          <input
-            type="range"
-            min="0.2"
-            max="4"
-            step="0.1"
-            value={brightness}
-            onChange={handleBrightnessChange}
-            style={styles.range}
-          />
-        </div>
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>
-            Escala do Personagem: <span style={styles.spanVal}>{scale}%</span>
-          </label>
-          <input
-            type="range"
-            min="10"
-            max="300"
-            step="5"
-            value={scale}
-            onChange={handleScaleChange}
-            style={styles.range}
-          />
-        </div>
-
-        <button type="button" onClick={handleExportGLB} style={{ ...styles.btn, ...styles.btnExport }}>
-          📥 Exportar GLB Animado
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const styles: { [key: string]: React.CSSProperties } = {
-  appContainer: {
-    display: 'flex',
-    width: '100vw',
-    height: '100vh',
-    backgroundColor: '#071220',
-    color: '#ffffff',
-    fontFamily: 'Arial, sans-serif',
-    overflow: 'hidden',
-  },
-  canvasContainer: {
-    flex: 1,
-    height: '100%',
-  },
-  sidebar: {
-    width: '320px',
-    height: '100%',
-    backgroundColor: '#0d1f38',
-    padding: '16px',
-    overflowY: 'auto',
-    borderLeft: '1px solid #1e293b',
-    boxSizing: 'border-box',
-  },
-  title: {
-    marginBottom: '12px',
-    fontSize: '18px',
-    fontWeight: 'bold',
-  },
-  subtitle: {
-    marginBottom: '12px',
-    fontSize: '15px',
-  },
-  formGroup: {
-    marginBottom: '16px',
-  },
-  label: {
-    display: 'block',
-    fontSize: '13px',
-    marginBottom: '6px',
-    color: '#94a3b8',
-  },
-  spanVal: {
-    color: '#38bdf8',
-    fontWeight: 'bold',
-  },
-  input: {
-    width: '100%',
-    padding: '8px',
-    backgroundColor: '#1e293b',
-    color: '#fff',
-    border: '1px solid #334155',
-    borderRadius: '4px',
-    boxSizing: 'border-box',
-  },
-  select: {
-    width: '100%',
-    padding: '8px',
-    backgroundColor: '#1e293b',
-    color: '#fff',
-    border: '1px solid #334155',
-    borderRadius: '4px',
-    marginBottom: '8px',
-    boxSizing: 'border-box',
-  },
-  range: {
-    width: '100%',
-    accentColor: '#38bdf8',
-  },
-  animList: {
-    maxHeight: '150px',
-    overflowY: 'auto',
-    marginBottom: '6px',
-  },
-  btn: {
-    width: '100%',
-    padding: '10px',
-    marginTop: '4px',
-    border: 'none',
-    borderRadius: '4px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    boxSizing: 'border-box',
-  },
-  btnMove: {
-    backgroundColor: '#0284c7',
-    color: '#fff',
-    flex: 1,
-  },
-  btnAttach: {
-    backgroundColor: '#10b981',
-    color: '#fff',
-  },
-  btnAnim: {
-    backgroundColor: '#3b82f6',
-    color: '#fff',
-    marginBottom: '6px',
-  },
-  btnStop: {
-    backgroundColor: '#ef4444',
-    color: '#fff',
-  },
-  btnExport: {
-    backgroundColor: '#8b5cf6',
-    color: '#fff',
-    padding: '12px',
-    marginTop: '12px',
-  },
-};
-
-export default App;
+  // Limpar recursos ao desmontar componente React
+  public dispose() {
+    this.renderer.dispose();
+    if (this.container.contains(this.renderer.domElement)) {
+      this.container.removeChild(this.renderer.domElement);
+    }
+  }
+}
