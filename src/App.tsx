@@ -10,6 +10,7 @@ export const App: React.FC = () => {
   const [animations, setAnimations] = useState<THREE.AnimationClip[]>([]);
   const [selectedBone, setSelectedBone] = useState<string>('');
   const [currentProp, setCurrentProp] = useState<THREE.Object3D | null>(null);
+  const [isAttached, setIsAttached] = useState<boolean>(false);
   const [isPropSelected, setIsPropSelected] = useState<boolean>(false);
   const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
   const [brightness, setBrightness] = useState<number>(1.5);
@@ -52,6 +53,7 @@ export const App: React.FC = () => {
       threeManagerRef.current.loadProp(file, (propObj) => {
         setCurrentProp(propObj);
         setIsPropSelected(true);
+        setIsAttached(false);
       });
     }
   };
@@ -65,12 +67,19 @@ export const App: React.FC = () => {
 
   const handleAttachProp = () => {
     if (threeManagerRef.current && currentProp && selectedBone) {
-      threeManagerRef.current.attachToBone(currentProp, selectedBone);
+      threeManagerRef.current.attachToBone(selectedBone);
+      setIsAttached(true);
       setIsPropSelected(true);
     }
   };
 
-  // Toggle Selecionar/Desselecionar Objeto por toque
+  const handleDetachProp = () => {
+    if (threeManagerRef.current) {
+      threeManagerRef.current.detachFromBone();
+      setIsAttached(false);
+    }
+  };
+
   const handleToggleSelectProp = () => {
     if (!threeManagerRef.current) return;
     if (isPropSelected) {
@@ -82,13 +91,11 @@ export const App: React.FC = () => {
     }
   };
 
-  // Alterar o modo do toque (Mover, Rotacionar, Escala)
   const handleChangeTransformMode = (mode: 'translate' | 'rotate' | 'scale') => {
     setTransformMode(mode);
     threeManagerRef.current?.setTransformMode(mode);
   };
 
-  // Manipulações Manuais por botões
   const handleMoveX = (delta: number) => threeManagerRef.current?.movePropX(delta);
   const handleMoveY = (delta: number) => threeManagerRef.current?.movePropY(delta);
   const handleMoveZ = (delta: number) => threeManagerRef.current?.movePropZ(delta);
@@ -121,10 +128,8 @@ export const App: React.FC = () => {
 
   return (
     <div style={styles.appContainer}>
-      {/* Viewport 3D */}
       <div ref={containerRef} style={styles.canvasContainer} />
 
-      {/* Painel Lateral */}
       <div style={styles.sidebar}>
         <h3 style={styles.title}>Controles 3D</h3>
 
@@ -143,7 +148,49 @@ export const App: React.FC = () => {
           <input type="file" accept="image/png, image/jpeg" onChange={handlePropTextureUpload} style={styles.input} />
         </div>
 
-        {/* Controles de Toque Direto / Arraste */}
+        {/* Seleção do Osso e Botão de Fixar */}
+        {currentProp && bones.length > 0 && (
+          <div style={styles.formGroup}>
+            <h4 style={styles.subtitle}>Vincular ao Esqueleto</h4>
+            <label style={styles.label}>Escolha a parte do corpo (Osso):</label>
+            <select
+              value={selectedBone}
+              onChange={(e) => setSelectedBone(e.target.value)}
+              style={styles.select}
+            >
+              <option value="">Selecione o osso (ex: RightHand)...</option>
+              {bones.map((b) => (
+                <option key={b.uuid} value={b.name}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {!isAttached ? (
+              <button
+                type="button"
+                onClick={handleAttachProp}
+                disabled={!selectedBone}
+                style={{
+                  ...styles.btn,
+                  backgroundColor: selectedBone ? '#10b981' : '#475569',
+                  color: '#fff',
+                }}
+              >
+                🔗 Fixar Posição Atual no Osso
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDetachProp}
+                style={{ ...styles.btn, backgroundColor: '#ef4444', color: '#fff' }}
+              >
+                🔓 Desfixar do Osso
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Controles por Toque na Tela */}
         {currentProp && (
           <div style={styles.formGroup}>
             <h4 style={styles.subtitle}>Controle por Toque na Tela</h4>
@@ -203,7 +250,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Ajustes Finos Manuais (Botões) */}
+        {/* Ajustes Finos (Botões) */}
         {currentProp && (
           <div style={styles.formGroup}>
             <h4 style={styles.subtitle}>Ajustes Finos (Botões)</h4>
@@ -237,27 +284,6 @@ export const App: React.FC = () => {
               <button type="button" onClick={() => handleRotateProp('x', 15)} style={{ ...styles.btn, ...styles.btnRotate }}>↩️ Inclin X (+15°)</button>
               <button type="button" onClick={() => handleRotateProp('z', 15)} style={{ ...styles.btn, ...styles.btnRotate }}>↪️ Inclin Z (+15°)</button>
             </div>
-          </div>
-        )}
-
-        {bones.length > 0 && (
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Selecione o Osso:</label>
-            <select
-              value={selectedBone}
-              onChange={(e) => setSelectedBone(e.target.value)}
-              style={styles.select}
-            >
-              <option value="">Selecione...</option>
-              {bones.map((b) => (
-                <option key={b.uuid} value={b.name}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={handleAttachProp} style={{ ...styles.btn, ...styles.btnAttach }}>
-              Anexar Objeto ao Osso
-            </button>
           </div>
         )}
 
@@ -437,12 +463,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#4f46e5',
     color: '#fff',
     flex: 1,
-  },
-  btnAttach: {
-    backgroundColor: '#10b981',
-    color: '#fff',
-    marginTop: '4px',
-    padding: '10px',
   },
   btnAnim: {
     backgroundColor: '#3b82f6',
