@@ -7,11 +7,17 @@ interface PropItem {
   name: string;
   object: THREE.Object3D;
   scale: number;
-  posX: number; posY: number; posZ: number;
-  rotX: number; rotY: number; rotZ: number;
+  posX: number;
+  posY: number;
+  posZ: number;
+  rotX: number;
+  rotY: number;
+  rotZ: number;
   attachedBoneName: string | null;
   isAttached: boolean;
 }
+
+type NumericPropKey = 'scale' | 'posX' | 'posY' | 'posZ' | 'rotX' | 'rotY' | 'rotZ';
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,8 +92,8 @@ export default function App() {
     }
   };
 
-  // Atualização Numérica (Através do botão ou digitando direto no input)
-  const setTransformValue = (id: string, key: keyof PropItem, value: number) => {
+  // Atualização Numérica Tipada para evitar erros do TS
+  const setTransformValue = (id: string, key: NumericPropKey, value: number) => {
     setPropsList((prev) =>
       prev.map((p) => {
         if (p.id !== id) return p;
@@ -96,7 +102,7 @@ export default function App() {
         if (key === 'scale') {
           newVal = Math.max(1, newVal);
         } else if (key.startsWith('rot')) {
-          newVal = (newVal % 360 + 360) % 360;
+          newVal = ((newVal % 360) + 360) % 360;
         }
 
         const updated = { ...p, [key]: newVal };
@@ -105,10 +111,12 @@ export default function App() {
         const s = updated.scale / 100;
         updated.object.scale.set(s, s, s);
         updated.object.position.set(updated.posX, updated.posY, updated.posZ);
+        
+        const degToRad = (deg: number) => (deg * Math.PI) / 180;
         updated.object.rotation.set(
-          THREE.MathUtils.degToRad(updated.rotX),
-          THREE.MathUtils.degToRad(updated.rotY),
-          THREE.MathUtils.degToRad(updated.rotZ)
+          degToRad(updated.rotX),
+          degToRad(updated.rotY),
+          degToRad(updated.rotZ)
         );
 
         return updated;
@@ -116,15 +124,16 @@ export default function App() {
     );
   };
 
-  const updateTransformDelta = (id: string, key: keyof PropItem, delta: number) => {
+  // Função disparada ao clicar nos botões + e -
+  const updateTransformDelta = (id: string, key: NumericPropKey, delta: number) => {
     const prop = propsList.find((p) => p.id === id);
     if (!prop) return;
-    const currentVal = (prop[key] as number) || 0;
+    const currentVal = prop[key];
     const finalVal = parseFloat((currentVal + delta).toFixed(2));
     setTransformValue(id, key, finalVal);
   };
 
-  // Executar Fixação do Objeto no Osso do Personagem
+  // Executar Fixação do Objeto no Osso
   const confirmFinalAttach = (propId: string) => {
     if (!targetBoneForSelect || !managerRef.current) return;
 
@@ -144,7 +153,7 @@ export default function App() {
     }
   };
 
-  // Soltar Objeto do Osso
+  // Soltar Objeto
   const detachProp = (propId: string) => {
     const prop = propsList.find((p) => p.id === propId);
     if (!prop || !managerRef.current) return;
@@ -345,7 +354,7 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Controles Numéricos com Caixas Editáveis */}
+              {/* Controles Numéricos com Caixas Editáveis e Botões + / - */}
               <div className="space-y-2">
 
                 {/* 1. TAMANHO DO OBJETO */}
@@ -477,7 +486,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ÁREA DE FIXAÇÃO NO OSSO (SEMPRE VISÍVEL ABAIXO DOS CONTROLES) */}
+              {/* Fixação no Osso */}
               <div className="pt-3 border-t border-[#1e3a5f] space-y-2">
                 {!selectedProp.isAttached ? (
                   <>
