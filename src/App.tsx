@@ -128,6 +128,7 @@ export const App: React.FC = () => {
               ))}
             </select>
             <button
+              type="button"
               onClick={handleAttachProp}
               style={{ width: '100%', padding: '8px', backgroundColor: '#10b981', color: '#fff', border: 'none', cursor: 'pointer' }}
             >
@@ -141,7 +142,8 @@ export const App: React.FC = () => {
             <h4>Animações</h4>
             {animations.map((anim, idx) => (
               <button
-                key={idx}
+                type="button"
+                key={anim.uuid || idx}
                 onClick={() => handlePlayAnim(anim)}
                 style={{ display: 'block', width: '100%', padding: '6px', marginBottom: '4px' }}
               >
@@ -149,6 +151,7 @@ export const App: React.FC = () => {
               </button>
             ))}
             <button
+              type="button"
               onClick={handleStopAnim}
               style={{ display: 'block', width: '100%', padding: '6px', marginTop: '8px', backgroundColor: '#ef4444', color: '#fff', border: 'none' }}
             >
@@ -184,6 +187,7 @@ export const App: React.FC = () => {
         </div>
 
         <button
+          type="button"
           onClick={handleExportGLB}
           style={{ width: '100%', padding: '12px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
         >
@@ -193,3 +197,5 @@ export const App: React.FC = () => {
     </div>
   );
 };
+
+export default App;
