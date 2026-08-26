@@ -81,16 +81,19 @@ export class ThreeManager {
 
       this.character = obj;
       
-      // Normaliza tamanho do personagem
+      // Normaliza tamanho do personagem e garante atualização de matriz
+      obj.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(obj);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
+      
       if (maxDim > 0) {
         const targetScale = 2 / maxDim; // Redimensiona para ter ~2m de altura
         obj.scale.setScalar(targetScale);
       }
 
       obj.position.set(0, 0, 0);
+      obj.updateMatrixWorld(true);
       this.scene.add(obj);
 
       // Prepara Mixer de Animação
@@ -134,18 +137,21 @@ export class ThreeManager {
 
       this.attachedProp = obj;
 
-      // Normaliza escala inicial do objeto para evitar estouro de tela
+      // Reset total de transformações locais antes de medir
+      obj.position.set(0, 0, 0);
+      obj.rotation.set(0, 0, 0);
+      obj.scale.set(1, 1, 1);
+      obj.updateMatrixWorld(true);
+
+      // Normaliza escala inicial do objeto para 30cm
       const box = new THREE.Box3().setFromObject(obj);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
+      
       if (maxDim > 0) {
-        const targetScale = 0.5 / maxDim; // Escala padrão inicial pequena
+        const targetScale = 0.3 / maxDim; // Escala padrão pequena (~30cm)
         obj.scale.setScalar(targetScale);
       }
-
-      // Reseta posição e rotação relativas
-      obj.position.set(0, 0, 0);
-      obj.rotation.set(0, 0, 0);
 
       URL.revokeObjectURL(url);
       callback(obj);
@@ -160,7 +166,7 @@ export class ThreeManager {
     }
   }
 
-  // Anexar o Objeto ao Osso Selecionado
+  // Anexar o Objeto ao Osso Selecionado sem disparar para o infinito
   public attachToBone(prop: THREE.Object3D, boneName: string) {
     if (!this.character) return;
 
@@ -172,11 +178,19 @@ export class ThreeManager {
     });
 
     if (targetBone) {
-      // Remove do pai anterior e anexa ao novo osso com matriz zerada
+      // 1. Desvincula do pai anterior
       prop.removeFromParent();
+
+      // 2. Reseta explicitamente as coordenadas locais em relação ao osso
       prop.position.set(0, 0, 0);
       prop.rotation.set(0, 0, 0);
+
+      // 3. Adiciona ao osso
       (targetBone as THREE.Bone).add(prop);
+
+      // 4. Força atualização do gráfico de cena global
+      prop.updateMatrixWorld(true);
+      this.character.updateMatrixWorld(true);
     }
   }
 
