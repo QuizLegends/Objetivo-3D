@@ -209,19 +209,33 @@ export class ThreeManager {
 
     const exporter = new GLTFExporter();
     exporter.parse(
-      this.scene,
+      this.characterModel,
       (gltf) => {
-        const output = JSON.stringify(gltf, null, 2);
-        const blob = new Blob([output], { type: 'application/json' });
+        let blob: Blob;
+
+        if (gltf instanceof ArrayBuffer) {
+          // Trata a saída binária do GLB (.glb)
+          blob = new Blob([gltf], { type: 'application/octet-stream' });
+        } else {
+          // Fallback caso venha como formato JSON (.gltf)
+          const output = JSON.stringify(gltf, null, 2);
+          blob = new Blob([output], { type: 'application/json' });
+        }
+
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = 'modelo_editado.glb';
         link.click();
+
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
       },
       (error) => {
         console.error('Erro ao exportar GLB:', error);
       },
-      { binary: true }
+      { 
+        binary: true,
+        embedImages: true 
+      }
     );
   }
 
