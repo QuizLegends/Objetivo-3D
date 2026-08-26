@@ -16,7 +16,8 @@ export class ThreeManager {
   
   private character: THREE.Object3D | null = null;
   private attachedProp: THREE.Object3D | null = null;
-  private propTexture: THREE.Texture | null = null;
+  private animations: THREE.AnimationClip[] = [];
+  
   private dirLight: THREE.DirectionalLight;
   private ambientLight: THREE.AmbientLight;
 
@@ -71,6 +72,25 @@ export class ThreeManager {
     this.renderer.render(this.scene, this.camera);
   };
 
+  // Centralizar Câmera no Objeto/Personagem
+  private centerCameraOn(object: THREE.Object3D) {
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return;
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    const fov = this.camera.fov * (Math.PI / 180);
+    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+    cameraZ *= 2.0; // Recuo seguro de visualização
+
+    this.camera.position.set(center.x, center.y + (maxDim * 0.2), center.z + cameraZ);
+    this.camera.lookAt(center);
+    this.controls.target.copy(center);
+    this.controls.update();
+  }
+
   // Carregar Personagem (FBX ou GLB)
   public loadCharacter(file: File, callback: (bones: THREE.Bone[], anims: THREE.AnimationClip[]) => void) {
     const url = URL.createObjectURL(file);
@@ -80,29 +100,27 @@ export class ThreeManager {
       if (this.character) this.scene.remove(this.character);
 
       this.character = obj;
+      this.animations = animations || [];
       
-      // Posição base zerada
-      obj.position.set(0, 0, 0);
-      this.scene.add(obj);
+      this.character.position.set(0, 0, 0);
+      this.scene.add(this.character);
 
-      // Prepara Mixer de Animação
-      this.mixer = new THREE.AnimationMixer(obj);
+      // Mixer de Animação
+      this.mixer = new THREE.AnimationMixer(this.character);
 
       // Coleta ossos
       const bones: THREE.Bone[] = [];
-      obj.traverse((child) => {
+      this.character.traverse((child) => {
         if ((child as THREE.Bone).isBone) {
           bones.push(child as THREE.Bone);
         }
       });
 
-      // Centraliza a câmera no personagem
-      this.controls.target.set(0, 1, 0);
-      this.camera.position.set(0, 1.5, 3);
-      this.controls.update();
+      // Enquadra a câmera automaticamente no personagem recém-carregado
+      this.centerCameraOn(this.character);
 
       URL.revokeObjectURL(url);
-      callback(bones, animations);
+      callback(bones, this.animations);
     };
 
     if (ext === 'fbx') {
@@ -125,10 +143,8 @@ export class ThreeManager {
       }
 
       this.attachedProp = obj;
-
-      // Reseta posições do objeto
-      obj.position.set(0, 0, 0);
-      obj.rotation.set(0, 0, 0);
+      this.attachedProp.position.set(0, 0, 0);
+      this.attachedProp.rotation.set(0, 0, 0);
 
       URL.revokeObjectURL(url);
       callback(obj);
@@ -155,14 +171,16 @@ export class ThreeManager {
     });
 
     if (targetBone) {
-      // Move para dentro do osso sem zerar/quebrar escala
       (targetBone as THREE.Bone).add(prop);
       prop.position.set(0, 0, 0);
       prop.rotation.set(0, 0, 0);
+      
+      // Centraliza a câmera no conjunto (Personagem + Objeto)
+      this.centerCameraOn(this.character);
     }
   }
 
-  // Aplicar Textura Customizada ao Objeto
+  // Aplicar Textura Customizada ao Objeto (Garantindo compatibilidade de exportação)
   public applyPropTexture(file: File) {
     if (!this.attachedProp) return;
 
@@ -170,20 +188,21 @@ export class ThreeManager {
     const loader = new THREE.TextureLoader();
     loader.load(url, (texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
-      this.propTexture = texture;
+      texture.flipY = false; // Ajuste padrão para mapeamento UV de modelos 3D modernos
 
       this.attachedProp?.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          if (Array.isArray(mesh.material)) {
-            mesh.material.forEach((mat) => {
-              (mat as THREE.MeshStandardMaterial).map = texture;
-              mat.needsUpdate = true;
-            });
-          } else if (mesh.material) {
-            (mesh.material as THREE.MeshStandardMaterial).map = texture;
-            mesh.material.needsUpdate = true;
-          }
+          
+          // Cria um novo MeshStandardMaterial para garantir compatibilidade com o GLTFExporter
+          const newMat = new THREE.MeshStandardMaterial({
+            map: texture,
+            roughness: 0.5,
+            metalness: 0.1
+          });
+
+          mesh.material = newMat;
+          mesh.material.needsUpdate = true;
         }
       });
       URL.revokeObjectURL(url);
@@ -213,7 +232,7 @@ export class ThreeManager {
     }
   }
 
-  // --- MÉTODOS GERAIS ---
+  // --- ANIMAÇÕES E EXPORTAÇÃO CORRIGIDA ---
 
   public playAnimation(anim: THREE.AnimationClip) {
     if (this.mixer) {
@@ -241,9 +260,19 @@ export class ThreeManager {
     }
   }
 
+  // Exportar GLB com Animações e Materiais Preservados
   public exportGLB() {
     if (!this.character) return;
+
     const exporter = new GLTFExporter();
+    
+    // Configurações essenciais para incluir animações e texturas no arquivo final
+    const options = {
+      binary: true,
+      animations: this.animations, // Inclui a lista de animações no GLB baixado
+      embedImages: true             // Garante a inclusão de imagens/texturas aplicadas
+    };
+
     exporter.parse(
       this.character,
       (gltf) => {
@@ -256,7 +285,7 @@ export class ThreeManager {
       (error) => {
         console.error('Erro ao exportar GLB:', error);
       },
-      { binary: true }
+      options
     );
   }
 
