@@ -1,12 +1,165 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Editor de Personagens 3D</title>
-  </head>
-  <body class="bg-[#071220] text-white overflow-hidden font-sans">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gerenciador 3D - Animação e Props</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      background-color: #071220;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      flex: 1;
+      height: 100%;
+    }
+
+    #sidebar {
+      width: 320px;
+      height: 100%;
+      background-color: #0d1f38;
+      padding: 16px;
+      overflow-y: auto;
+      border-left: 1px solid #1e293b;
+    }
+
+    h3, h4 {
+      margin-bottom: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: #94a3b8;
+    }
+
+    input[type="file"], select, input[type="range"] {
+      width: 100%;
+      padding: 8px;
+      background-color: #1e293b;
+      color: #fff;
+      border: 1px solid #334155;
+      border-radius: 4px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 4px;
+      border: none;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .btn-attach {
+      background-color: #10b981;
+      color: #fff;
+    }
+
+    .btn-anim {
+      background-color: #3b82f6;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .btn-stop {
+      background-color: #ef4444;
+      color: #fff;
+    }
+
+    .btn-export {
+      background-color: #8b5cf6;
+      color: #fff;
+      padding: 12px;
+      margin-top: 12px;
+    }
+
+    #anim-list {
+      max-height: 150px;
+      overflow-y: auto;
+    }
+  </style>
+
+  <!-- Import Map para Three.js via CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+        "three/examples/jsm/loaders/FBXLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js",
+        "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+        "three/examples/jsm/exporters/GLTFExporter.js": "https://unpkg.com/three@0.160.0/examples/jsm/exporters/GLTFExporter.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <div id="sidebar">
+    <h3>Controles 3D</h3>
+
+    <div class="form-group">
+      <label for="char-input">Personagem (FBX/GLB):</label>
+      <input type="file" id="char-input" accept=".fbx,.glb,.gltf" />
+    </div>
+
+    <div class="form-group">
+      <label for="prop-input">Objeto / Arma (FBX/GLB):</label>
+      <input type="file" id="prop-input" accept=".fbx,.glb,.gltf" />
+    </div>
+
+    <div class="form-group">
+      <label for="texture-input">Textura do Objeto (PNG/JPG):</label>
+      <input type="file" id="texture-input" accept="image/png, image/jpeg" />
+    </div>
+
+    <div class="form-group" id="bone-section" style="display: none;">
+      <label for="bone-select">Selecione o Osso:</label>
+      <select id="bone-select">
+        <option value="">Selecione...</option>
+      </select>
+      <button id="btn-attach" class="btn-attach">Anexar Objeto ao Osso</button>
+    </div>
+
+    <div class="form-group" id="anim-section" style="display: none;">
+      <h4>Animações</h4>
+      <div id="anim-list"></div>
+      <button id="btn-stop-anim" class="btn-stop">⏹️ Parar Animação</button>
+    </div>
+
+    <div class="form-group">
+      <label for="bright-range">Brilho: <span id="bright-val">1.5</span></label>
+      <input type="range" id="bright-range" min="0.2" max="4" step="0.1" value="1.5" />
+    </div>
+
+    <div class="form-group">
+      <label for="scale-range">Escala do Personagem: <span id="scale-val">100</span>%</label>
+      <input type="range" id="scale-range" min="10" max="300" step="5" value="100" />
+    </div>
+
+    <button id="btn-export" class="btn-export">📥 Exportar GLB Animado</button>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
 </html>
