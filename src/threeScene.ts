@@ -170,11 +170,36 @@ export class ThreeManager {
     }
   }
 
-  // Mover Objeto no eixo Y (Cima / Baixo)
+  // --- CONTROLES DO OBJETO ---
+
+  // Movimentação de Posição (X, Y, Z)
+  public movePropX(delta: number) {
+    if (this.currentProp) this.currentProp.position.x += delta;
+  }
+
   public movePropY(delta: number) {
+    if (this.currentProp) this.currentProp.position.y += delta;
+  }
+
+  public movePropZ(delta: number) {
+    if (this.currentProp) this.currentProp.position.z += delta;
+  }
+
+  // Escala (Aumentar / Diminuir como um todo)
+  public scaleProp(factor: number) {
     if (this.currentProp) {
-      this.currentProp.position.y += delta;
+      const newScale = Math.max(0.01, this.currentProp.scale.x * factor);
+      this.currentProp.scale.set(newScale, newScale, newScale);
     }
+  }
+
+  // Rotação nos Eixos (graus)
+  public rotateProp(axis: 'x' | 'y' | 'z', degrees: number) {
+    if (!this.currentProp) return;
+    const rad = THREE.MathUtils.degToRad(degrees);
+    if (axis === 'x') this.currentProp.rotation.x += rad;
+    if (axis === 'y') this.currentProp.rotation.y += rad;
+    if (axis === 'z') this.currentProp.rotation.z += rad;
   }
 
   // Tocar Animação
