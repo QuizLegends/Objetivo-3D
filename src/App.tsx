@@ -66,6 +66,10 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleMovePropY = (delta: number) => {
+    threeManagerRef.current?.movePropY(delta);
+  };
+
   const handlePlayAnim = (anim: THREE.AnimationClip) => {
     threeManagerRef.current?.playAnimation(anim);
   };
@@ -113,6 +117,21 @@ export const App: React.FC = () => {
           <label style={styles.label}>Textura do Objeto (PNG/JPG):</label>
           <input type="file" accept="image/png, image/jpeg" onChange={handlePropTextureUpload} style={styles.input} />
         </div>
+
+        {/* Ajustes de Posição do Objeto (Cima / Baixo) */}
+        {currentProp && (
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Ajuste de Posição do Objeto:</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={() => handleMovePropY(0.05)} style={{ ...styles.btn, ...styles.btnMove }}>
+                ⬆️ Cima
+              </button>
+              <button type="button" onClick={() => handleMovePropY(-0.05)} style={{ ...styles.btn, ...styles.btnMove }}>
+                ⬇️ Baixo
+              </button>
+            </div>
+          </div>
+        )}
 
         {bones.length > 0 && (
           <div style={styles.formGroup}>
@@ -194,7 +213,6 @@ export const App: React.FC = () => {
   );
 };
 
-// Estilização idêntica ao HTML original fornecido
 const styles: { [key: string]: React.CSSProperties } = {
   appContainer: {
     display: 'flex',
@@ -277,6 +295,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 'bold',
     cursor: 'pointer',
     boxSizing: 'border-box',
+  },
+  btnMove: {
+    backgroundColor: '#0284c7',
+    color: '#fff',
+    flex: 1,
   },
   btnAttach: {
     backgroundColor: '#10b981',
